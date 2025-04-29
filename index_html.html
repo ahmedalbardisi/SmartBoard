@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="السبورة الذكية لتسجيل الملاحظات والرسم">
+    <title>السبورة الذكية</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="style.css?t=time_29_455" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Tajawal:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  </head>
+  <body>
+    <!-- Header أعلى الصفحة -->
+    <header class="header">
+      <div class="hdr-left">
+        <button id="toggle-sidebar" title="إظهار/إخفاء الشريط الجانبي">
+          <i class="fas fa-bars"></i>
+        </button>
+        <label for="file-name">اسم المشروع:</label>
+        <input type="text" id="file-name" value="ملف جديد" />
+      </div>
+      <div class="hdr-center">
+        <button id="zoom-out" title="تصغير">
+          <i class="fas fa-search-minus"></i>
+        </button>
+        <span id="page-indicator">1 / 1 </span>
+
+        <button id="zoom-in" title="تكبير">
+          <i class="fas fa-search-plus"></i>
+        </button>
+      </div>
+      <div class="hdr-right">
+        <button id="dark-mode-btn" title="الوضع الليلي">
+          <i class="fas fa-moon"></i>
+        </button>
+        <button id="settings-btn" title="الإعدادات">
+          <i class="fas fa-cog"></i>
+        </button>
+        <button id="undo-btn" title="تراجع"><i class="fas fa-undo"></i></button>
+        <button id="redo-btn" title="تقدم"><i class="fas fa-redo"></i></button>
+        <button id="clear-btn" title="حذف الكل">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Toolbar الإعدادات المنبثقة -->
+    <div id="settings-panel" class="settings-panel hidden">
+      <h3>الإعدادات</h3>
+      <button id="save-pdf"><i class="fas fa-file-pdf"></i> حفظ كـ PDF</button>
+      <hr />
+      <label>خلفية الصفحة:</label>
+      <select id="bg-type">
+        <option value="dots">نقاط</option>
+        <option value="lines">خطوط</option>
+        <option value="grid">شبكة</option>
+        <option value="plain">فارغة</option>
+      </select>
+      <hr />
+      <label>نوع الخط:</label>
+      <select id="font-type">
+        <option value="Arial">Arial</option>
+        <option value="Cairo" selected>Cairo</option>
+        <option value="Tajawal">Tajawal</option>
+      </select>
+      <hr />
+      <label>حجم القلم:</label>
+      <input type="range" id="custom-size" min="1" max="30" value="2" />
+    </div>
+
+    <!-- area تحت الهيدر: sidebar + canvas -->
+    <div class="workspace">
+      <!-- Sidebar بأدوات الرسم -->
+      <aside class="sidebar">
+        <h4>أدوات الرسم</h4>
+        <button id="pen-btn" class="tool-btn active" title="قلم">
+          <i class="fas fa-pen"></i>
+        </button>
+        <button id="select-btn" class="tool-btn" title="تحديد">
+          <i class="fas fa-mouse-pointer"></i>
+        </button>
+        <button id="highlight-btn" class="tool-btn" title="تظليل">
+          <i class="fas fa-highlighter"></i>
+        </button>
+        <button id="eraser-btn" class="tool-btn" title="ممحاة">
+          <i class="fas fa-eraser"></i>
+        </button>
+        <button id="text-btn" class="tool-btn" title="نص">
+          <i class="fas fa-font"></i>
+        </button>
+        <hr />
+        <h4>ألوان</h4>
+        <div class="color-list">
+          <div
+            class="color-circle selected"
+            data-color="#000000"
+            style="background: #000000"
+          ></div>
+          <div
+            class="color-circle"
+            data-color="#666666"
+            style="background: #666666"
+          ></div>
+          <div
+            class="color-circle"
+            data-color="#87CEEB"
+            style="background: #87ceeb"
+          ></div>
+          <div
+            class="color-circle"
+            data-color="#2E8B57"
+            style="background: #2e8b57"
+          ></div>
+          <div
+            class="color-circle"
+            data-color="#FFD700"
+            style="background: #ffd700"
+          ></div>
+          <div
+            class="color-circle"
+            data-color="#E74C3C"
+            style="background: #e74c3c"
+          ></div>
+          <div
+            class="color-circle"
+            data-color="#9B59B6"
+            style="background: #9b59b6"
+          ></div>
+          <div
+            class="color-circle"
+            data-color="#FFFFFF"
+            style="background: #ffffff; border: 1px solid #ccc"
+          ></div>
+        </div>
+
+        <hr />
+        <h4>أحجام القلم</h4>
+        <div class="size-list">
+          <div class="size-dot selected" data-size="2"></div>
+          <div class="size-dot" data-size="5"></div>
+          <div class="size-dot" data-size="10"></div>
+          <div class="size-dot" data-size="15"></div>
+        </div>
+        <hr />
+        <h4>الأشكال</h4>
+        <button id="rect-btn" class="tool-btn" title="مستطيل">
+          <i class="far fa-square"></i>
+        </button>
+        <button id="circle-btn" class="tool-btn" title="دائرة">
+          <i class="far fa-circle"></i>
+        </button>
+        <button id="line-btn" class="tool-btn" title="خط">
+          <i class="fas fa-minus"></i>
+        </button>
+        <button id="arrow-btn" class="tool-btn" title="سهم">
+          <i class="fas fa-arrow-right"></i>
+        </button>
+
+        <hr />
+        <h4>الجداول</h4>
+        <button id="table-btn" class="tool-btn" title="إضافة جدول">
+          <i class="fas fa-table"></i>
+        </button>
+        <div id="table-options" class="hidden">
+          <label>عدد الصفوف:</label>
+          <input type="number" id="table-rows" min="1" max="10" value="3" />
+          <label>عدد الأعمدة:</label>
+          <input type="number" id="table-cols" min="1" max="10" value="3" />
+          <button id="add-table">إضافة</button>
+        </div>
+        <br />
+      </aside>
+
+      <!-- منطقة الصفحات -->
+      <main class="canvas-area" id="pages-container">
+        <div class="cont_pags">
+        <div class="page">
+          <div class="page-actions">
+
+          </div>
+          <canvas width="800" height="1100"></canvas>
+        </div>
+      </div>
+      </main>
+    </div>
+    <script src="Script_JS.js"></script>
+  </body>
+</html>

@@ -14,6 +14,7 @@
 let toolBeforeFourFingerEraser = "pen"; // Stores the tool active before activating the 4-finger eraser
 let initialPinchDistance = 0; // Stores the distance between fingers at the start of a pinch gesture
 let initialPinchScale = 1; // Stores the canvas scale at the start of a pinch gesture
+let isThreeFingerPanning = false; // Flag to indicate if the 3-finger pan gesture is active
 
 document.addEventListener('DOMContentLoaded', () => {
     // It's better to attach touch listeners after pages are created in initApp
@@ -22,9 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Let's define the touch event handlers first
     const handleTouchStart = (e) => {
-        // Prevent default to avoid unexpected browser behaviors like scrolling and zooming
-        // We'll handle specific gestures ourselves.
-        // e.preventDefault(); // Keep this line for now, may adjust behavior based on specific gesture count later
+        // Prevent default browser behaviors like scrolling and zooming for recognized gestures.
+        // We'll apply preventDefault conditionally based on the number of touches.
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
@@ -35,122 +35,156 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // --- Added for Four-Finger Eraser ---
+        // Reset flags if starting a new gesture
+        isDrawing = false;
+        isPanning = false; // Reset default pan flag
+        isThreeFingerPanning = false; // Reset 3-finger pan flag
+        initialPinchDistance = 0; // Reset zoom variables
+        initialPinchScale = 1;
+        // Note: toolBeforeFourFingerEraser is managed when the 4-finger gesture ends.
+
+
+        // --- Prioritize Multi-finger Gestures ---
+
+        // --- Four-Finger Eraser Start ---
         if (e.touches.length === 4) {
              e.preventDefault(); // Prevent default browser behavior for this gesture
-             // Save the current tool before switching to eraser
-             toolBeforeFourFingerEraser = currentTool;
-             setActiveTool("eraser"); // Switch to the eraser tool (this will also update the cursor)
-             console.log("Four-finger eraser activated.");
-             // Immediately start erasing if the touch happens on content
-             isDrawing = true; // Set isDrawing to true to allow immediate erasing on touchstart
-             const touch = e.touches[0]; // Use the first touch for the starting point
-             const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY);
-             [lastX, lastY] = [pos.x, pos.y];
-
-             // Prepare context for erasing
-             page.ctx.beginPath();
-             page.ctx.lineWidth = currentSize * 1.5; // Use eraser size, potentially larger
-             page.ctx.globalCompositeOperation = 'destination-out'; // This is key for erasing
-             page.ctx.moveTo(lastX, lastY);
-
-             return; // Don't proceed with other touch logic
+             // Only activate if no other gesture is currently considered active
+             if (!isDrawing && !isPanning && initialPinchDistance === 0 && !isThreeFingerPanning) {
+                 toolBeforeFourFingerEraser = currentTool; // Save the current tool
+                 setActiveTool("eraser"); // Switch to the eraser tool
+                 console.log("Four-finger eraser activated.");
+                 // Prepare for erasing on touchstart
+                 isDrawing = true; // Use isDrawing flag for the temporary erase action
+                 const touch = e.touches[0];
+                 const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY);
+                 [lastX, lastY] = [pos.x, pos.y];
+                 page.ctx.beginPath();
+                 page.ctx.lineWidth = currentSize * 1.5; // Use eraser size
+                 page.ctx.globalCompositeOperation = 'destination-out'; // Erasing mode
+                 page.ctx.moveTo(lastX, lastY);
+             }
+             return; // Consume the touchstart event if 4 fingers are detected
         }
-        // --- End Added for Four-Finger Eraser ---
+        // --- End Four-Finger Eraser Start ---
 
-        // --- Added for Three-Finger Pan ---
-        // Check for exactly 3 touches. The `currentTool !== 'pan'` check in single-touch is still valid for the button.
+        // --- Three-Finger Pan Start ---
         if (e.touches.length === 3) {
             e.preventDefault(); // Prevent default browser scroll/zoom for this gesture
-            isPanning = true;
-            const touch = e.touches[0]; // Use the first touch for calculating movement
-            const rect = canvas.getBoundingClientRect();
-            // Store the starting position relative to the canvas's viewport position,
-            // taking into account the current pan offset.
-            panStartX = touch.clientX - rect.left - page.translateX;
-            panStartY = touch.clientY - rect.top - page.translateY;
-            canvas.classList.add("active"); // grabbing cursor (assuming .active sets this)
-            console.log("Three-finger pan started.");
-            return; // Don't proceed with drawing or other logic if panning
+             // Only activate if no other gesture is currently considered active
+             if (!isDrawing && !isPanning && initialPinchDistance === 0 && currentTool !== 'eraser') { // Don't interfere with 4-finger erase
+                isThreeFingerPanning = true; // Activate 3-finger pan flag
+                const touch = e.touches[0]; // Use the first touch for calculating movement
+                const rect = canvas.getBoundingClientRect();
+                // Store the starting position relative to the canvas's viewport position
+                panStartX = touch.clientX - rect.left - page.translateX;
+                panStartY = touch.clientY - rect.top - page.translateY;
+                canvas.classList.add("active"); // grabbing cursor
+                console.log("Three-finger pan started.");
+             }
+            return; // Consume the touchstart event if 3 fingers are detected
         }
-        // --- End Added for Three-Finger Pan ---
+        // --- End Three-Finger Pan Start ---
 
-        // --- Added for Two-Finger Zoom ---
-        // Check for exactly 2 touches.
+        // --- Two-Finger Zoom Start ---
         if (e.touches.length === 2) {
             e.preventDefault(); // Prevent default browser zoom
-            initialPinchDistance = getDistanceBetweenTouches(e.touches[0], e.touches[1]);
-            initialPinchScale = page.scale; // Store the current scale
-            console.log("Two-finger pinch/zoom started.");
-            // No return here, as a tap with two fingers could potentially still be interpreted by other logic
-            // if not explicitly handled. However, typically 2 fingers implies zoom, so returning might be desired.
-            // Let's return to ensure only zoom logic is processed for 2 fingers.
-            return;
+             // Only activate if no other gesture is currently considered active
+             if (!isDrawing && !isPanning && !isThreeFingerPanning && currentTool !== 'eraser') { // Don't interfere with other gestures
+                initialPinchDistance = getDistanceBetweenTouches(e.touches[0], e.touches[1]);
+                initialPinchScale = page.scale; // Store the current scale
+                console.log("Two-finger pinch/zoom started.");
+             }
+            return; // Consume the touchstart event if 2 fingers are detected
         }
-        // --- End Added for Two-Finger Zoom ---
+        // --- End Two-Finger Zoom Start ---
 
 
-        // Handle single touch for drawing/shaping tools (Keep existing logic)
-        // This part will only run if none of the multi-touch gestures were detected.
-        if (e.touches.length === 1 && currentTool !== 'pan') {
-            isDrawing = true;
-            const touch = e.touches[0];
-            const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY);
+        // --- Handle Single Touch (Default Drawing/Shaping or Button Pan) ---
+        // This will only run if the number of touches is not 2, 3, or 4.
+        if (e.touches.length === 1) {
+             // Prevent default only if we are starting a drawing/shaping action
+             // Allow default if it's a potential click on UI elements not covered by canvas
+             if (currentTool !== 'pan') { // Prevent default for drawing/shaping tools
+                 e.preventDefault();
+             }
+             // If currentTool is 'pan', allow default for potential scrolling of the canvas area itself
+             // or handle button-activated pan explicitly here if needed.
 
-            [lastX, lastY] = [pos.x, pos.y];
-            drawStartX = pos.x;
-            drawStartY = pos.y;
-
-            // Save the canvas state before starting any drawing or shape action
-            savedCanvasState = page.ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-            // Add logic for 'table' tool touch start
-            if (currentTool === 'table') {
-                const rows = parseInt(document.getElementById('table-rows').value);
-                const cols = parseInt(document.getElementById('table-cols').value);
-                 page.tableInfo = { startX: drawStartX, startY: drawStartY, rows: rows, cols: cols };
-                 console.log(`Drawing table with ${rows} rows and ${cols} columns on touchstart`);
+            if (currentTool === 'pan') {
+                 isPanning = true; // Activate the default pan flag (for the button-activated tool)
+                 const touch = e.touches[0];
+                 const rect = canvas.getBoundingClientRect();
+                 panStartX = touch.clientX - rect.left - page.translateX;
+                 panStartY = touch.clientY - rect.top - page.translateY;
+                 canvas.classList.add("active"); // grabbing cursor
+                 console.log("Single-touch button pan started.");
+                 return; // Consume the touchstart event for single-touch pan
             }
 
-             // Prepare context for drawing (pen, eraser, highlight)
-            if (currentTool === 'pen' || currentTool === 'eraser' || currentTool === 'highlight') {
-                 page.ctx.beginPath();
 
-                 if (currentTool === 'highlight') {
-                     // For highlight, start collecting points
-                     highlightPoints = [{ x: pos.x, y: pos.y }];
-                 } else if (currentTool === 'pen') { // Add logic for pen points
-                      penPoints = [{ x: pos.x, y: pos.y }];
+            // Proceed with drawing/shaping start if it's not a pan tool
+            if (currentTool !== 'pan' && currentTool !== 'eraser') { // Eraser handled by 4-finger gesture or single touch below
+                 isDrawing = true;
+                 const touch = e.touches[0];
+                 const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY);
+
+                 [lastX, lastY] = [pos.x, pos.y];
+                 drawStartX = pos.x;
+                 drawStartY = pos.y;
+
+                 savedCanvasState = page.ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                 if (currentTool === 'table') {
+                     const rows = parseInt(document.getElementById('table-rows').value);
+                     const cols = parseInt(document.getElementById('table-cols').value);
+                     page.tableInfo = { startX: drawStartX, startY: drawStartY, rows: rows, cols: cols };
+                     console.log(`Drawing table with ${rows} rows and ${cols} columns on touchstart`);
                  }
 
-                 page.ctx.lineWidth = currentSize;
-                 page.ctx.strokeStyle = currentColor;
-                 page.ctx.globalAlpha = 1.0; // Default opacity
+                 if (currentTool === 'pen' || currentTool === 'highlight') {
+                      page.ctx.beginPath();
+                      if (currentTool === 'highlight') {
+                          highlightPoints = [{ x: pos.x, y: pos.y }];
+                      } else if (currentTool === 'pen') {
+                           penPoints = [{ x: pos.x, y: pos.y }];
+                      }
+                      page.ctx.lineWidth = currentSize;
+                      page.ctx.strokeStyle = currentColor;
+                      page.ctx.globalAlpha = 1.0;
 
-                if (currentTool === 'eraser') {
-                    // Use destination-out to erase
-                    page.ctx.globalCompositeOperation = 'destination-out';
-                    // Eraser might need a larger effective size
-                    page.ctx.lineWidth = currentSize * 1.5; // Example: make eraser slightly bigger
-                     page.ctx.moveTo(lastX, lastY); // Start path for eraser
-                } else if (currentTool === 'highlight') {
-                    page.ctx.strokeStyle = currentColor; // Use selected color
-                    page.ctx.globalAlpha = 0.5; // Set global alpha for the highlight tool drawing
-                     // Ensure it draws on top of existing content
-                    page.ctx.globalCompositeOperation = 'source-over';
-                    page.ctx.lineWidth = currentSize * 5; // Highlighter is usually thicker
-                } else if (currentTool === 'pen') { // Set styles for pen
-                     page.ctx.globalCompositeOperation = 'source-over'; // Default drawing mode
-                     page.ctx.strokeStyle = currentColor;
-                     page.ctx.lineWidth = currentSize;
-                     page.ctx.globalAlpha = 1.0; // Opaque for pen
-                }
+                     if (currentTool === 'highlight') {
+                         page.ctx.strokeStyle = currentColor;
+                         page.ctx.globalAlpha = 0.5;
+                         page.ctx.globalCompositeOperation = 'source-over';
+                         page.ctx.lineWidth = currentSize * 5;
+                     } else if (currentTool === 'pen') {
+                          page.ctx.globalCompositeOperation = 'source-over';
+                          page.ctx.strokeStyle = currentColor;
+                          page.ctx.lineWidth = currentSize;
+                          page.ctx.globalAlpha = 1.0;
+                     }
+                 }
+            }
+            // Handle single-touch eraser if the eraser tool is active (not via 4-finger gesture)
+            else if (currentTool === 'eraser') {
+                 e.preventDefault(); // Prevent default for erasing action
+                 isDrawing = true; // Use isDrawing flag for erasing
+                 const touch = e.touches[0];
+                 const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY);
+                 [lastX, lastY] = [pos.x, pos.y];
+                 page.ctx.beginPath();
+                 page.ctx.lineWidth = currentSize * 1.5; // Use eraser size
+                 page.ctx.globalCompositeOperation = 'destination-out'; // Erasing mode
+                 page.ctx.moveTo(lastX, lastY);
             }
         }
     };
 
     const handleTouchMove = (e) => {
-        e.preventDefault(); // Prevent scrolling for all handled touch gestures
+        // Only prevent default if a specific, handled gesture is active.
+        // This allows natural scrolling for unhandled touch actions.
+         // e.preventDefault(); // Removed global preventDefault
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
@@ -162,156 +196,133 @@ document.addEventListener('DOMContentLoaded', () => {
          }
          const ctx = page.ctx;
 
-        // --- Added for Two-Finger Zoom ---
-        // Check if there are exactly two fingers and initial pinch distance was set
-        if (e.touches.length === 2 && initialPinchDistance > 0) {
+        // --- Handle Active Gestures ---
+
+        // --- Four-Finger Eraser Move ---
+        // Check if isDrawing is true AND the current tool is eraser AND there are still 4 fingers
+        // (or if it was the 4-finger gesture that started the eraser and the count dropped, handle transition in touchend)
+        if (isDrawing && currentTool === 'eraser' && e.touches.length === 4) {
+             e.preventDefault(); // Prevent default browser behavior for erasing
+             const touch = e.touches[0]; // Use the first touch for erasing
+             const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
+             ctx.lineTo(pos.x, pos.y);
+             ctx.stroke();
+             [lastX, lastY] = [pos.x, pos.y];
+             return; // Consume the touchmove event if 4-finger erasing
+        }
+         // --- End Four-Finger Eraser Move ---
+
+
+        // --- Three-Finger Pan Move ---
+        // Check if the 3-finger pan flag is active AND there are still 3 fingers
+        if (isThreeFingerPanning && e.touches.length === 3) {
+             e.preventDefault(); // Prevent default browser behavior for panning
+             const touch = e.touches[0]; // Use the first touch for calculating movement
+             const rect = canvas.getBoundingClientRect();
+             page.translateX = (touch.clientX - rect.left) - panStartX;
+             page.translateY = (touch.clientY - rect.top) - panStartY;
+             applyTransform(page); // Update visual position
+             return; // Consume the touchmove event if 3-finger panning
+        }
+        // --- End Three-Finger Pan Move ---
+
+        // --- Two-Finger Zoom Move ---
+        // Check if initial pinch distance was set (meaning a zoom gesture started) AND there are exactly 2 fingers
+        if (initialPinchDistance > 0 && e.touches.length === 2) {
             e.preventDefault(); // Prevent default browser zoom
             const currentPinchDistance = getDistanceBetweenTouches(e.touches[0], e.touches[1]);
-            // Calculate the new scale based on the ratio of current to initial distance
             let newScale = initialPinchScale * (currentPinchDistance / initialPinchDistance);
-
-            // Clamp the scale to a reasonable range (e.g., 0.2x to 5x)
-            newScale = Math.max(0.2, Math.min(newScale, 5));
-
-            // Optional: Adjust pan during zoom to keep the center of the pinch/spread in view
-            // This requires calculating the center point of the touches and adjusting translateX/Y
-            // based on the change in scale and the center point. This is more complex and omitted
-            // for this basic implementation. The current pan will be maintained.
-
+            newScale = Math.max(0.2, Math.min(newScale, 5)); // Clamp scale
             page.scale = newScale;
             applyTransform(page); // Apply the new scale
-
-            console.log("Two-finger pinch/zoom active. Scale:", newScale);
-            return; // Don't proceed with other touch logic
+            // console.log("Two-finger pinch/zoom active. Scale:", newScale); // Keep console log if helpful for debugging
+            return; // Consume the touchmove event if 2-finger zooming
         }
-        // --- End Added for Two-Finger Zoom ---
+        // --- End Two-Finger Zoom Move ---
 
-        // --- Added for Three-Finger Pan ---
-        // Check if currently panning (either via button or gesture) and there are still 3 fingers for the gesture
-        // Or if currentTool is 'pan' and there's one finger for the button-activated pan.
-         if (isPanning) { // Check if panning flag is true
-             if (e.touches.length === 3) { // If 3 fingers, continue gesture pan
-                 const touch = e.touches[0]; // Use the first touch for calculating movement
-                 const rect = canvas.getBoundingClientRect();
-                 // Calculate new translate values based on touch movement relative to pan start
-                 page.translateX = (touch.clientX - rect.left) - panStartX;
-                 page.translateY = (touch.clientY - rect.top) - panStartY;
 
-                 applyTransform(page); // Update visual position
-                 return; // Don't proceed with drawing logic if panning
-             } else if (e.touches.length === 1 && currentTool === 'pan') {
-                 // This handles the button-activated single-touch pan move
-                  const touch = e.touches[0];
-                  const rect = canvas.getBoundingClientRect();
-                  page.translateX = (touch.clientX - rect.left) - panStartX;
-                  page.translateY = (touch.clientY - rect.top) - panStartY;
-                  applyTransform(page);
-                  return; // Don't proceed with drawing logic
+        // --- Handle Single Touch Drawing/Shaping or Button Pan Move ---
+        // This will only run if none of the multi-touch gestures are active OR the number of touches is 1.
+         if (isDrawing && e.touches.length === 1) { // Check if drawing (or single-touch erase) is active with 1 finger
+             e.preventDefault(); // Prevent default for drawing/erasing action
+             const touch = e.touches[0];
+             const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
+
+             if (currentTool === 'pen' || currentTool === 'highlight') {
+                  const points = currentTool === 'pen' ? penPoints : highlightPoints;
+                  points.push({ x: pos.x, y: pos.y });
+                  if (savedCanvasState) {
+                       ctx.putImageData(savedCanvasState, 0, 0);
+                  }
+                 ctx.strokeStyle = currentColor;
+                 ctx.globalCompositeOperation = 'source-over';
+                 ctx.lineWidth = (currentTool === 'highlight') ? currentSize * 5 : currentSize;
+                 ctx.globalAlpha = (currentTool === 'highlight') ? 0.5 : 1.0;
+
+                  if (points.length > 1) {
+                      ctx.beginPath();
+                      ctx.moveTo(points[0].x, points[0].y);
+                      for (let i = 1; i < points.length; i++) {
+                           const p1 = points[i - 1];
+                           const p2 = points[i];
+                           const midPoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+                          ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+                      }
+                     ctx.lineTo(pos.x, pos.y);
+                      ctx.stroke();
+                  }
+             } else if (currentTool === 'eraser') {
+                  ctx.lineTo(pos.x, pos.y);
+                  ctx.stroke();
+                 [lastX, lastY] = [pos.x, pos.y];
              }
-         }
-         // --- End Added for Three-Finger Pan ---
+             else if (currentTool === 'rect' || currentTool === 'circle' || currentTool === 'line' || currentTool === 'arrow' || currentTool === 'table') {
+                if (savedCanvasState) {
+                    ctx.putImageData(savedCanvasState, 0, 0);
+                }
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = currentSize;
+                ctx.globalAlpha = 1.0;
+                ctx.globalCompositeOperation = 'source-over';
 
+                const width = pos.x - drawStartX;
+                const height = pos.y - drawStartY;
 
-        if (!isDrawing || e.touches.length === 0) return;
-
-        const touch = e.touches[0];
-        const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
-
-
-        // --- Existing drawing/shaping touchmove logic ---
-        if (currentTool === 'pen' || currentTool === 'highlight') {
-             const points = currentTool === 'pen' ? penPoints : highlightPoints;
-             points.push({ x: pos.x, y: pos.y });
-
-             // Restore the canvas to the state before drawing the current stroke preview
-             if (savedCanvasState) {
-                  ctx.putImageData(savedCanvasState, 0, 0);
-             }
-
-             // Set style for preview
-            ctx.strokeStyle = currentColor;
-            ctx.globalCompositeOperation = 'source-over'; // Draw on top
-
-            if (currentTool === 'highlight') {
-                 ctx.lineWidth = currentSize * 5;
-                 ctx.globalAlpha = 0.5; // Semi-transparency for highlight
-            } else if (currentTool === 'pen') { // Set styles for pen preview
-                 ctx.lineWidth = currentSize;
-                 ctx.globalAlpha = 1.0; // Opaque for pen
-            }
-
-
-             // Draw the path using quadratic curves
-             if (points.length > 1) {
-                 ctx.beginPath(); // Start a new path for each preview frame
-                 ctx.moveTo(points[0].x, points[0].y);
-
-                 for (let i = 1; i < points.length; i++) {
-                      const p1 = points[i - 1];
-                      const p2 = points[i];
-                      // Calculate midpoint for smoother curve control
-                      const midPoint = {
-                          x: (p1.x + p2.x) / 2,
-                          y: (p1.y + p2.y) / 2,
-                      };
-                      // Draw quadratic curve from the previous point (p1) to the midpoint, with p1 as the control point
-                     ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+                ctx.beginPath();
+                if (currentTool === 'rect') {
+                    ctx.strokeRect(drawStartX, drawStartY, width, height);
+                 } else if (currentTool === 'circle') {
+                     const centerX = drawStartX + width / 2;
+                     const centerY = drawStartY + height / 2;
+                     const radiusX = Math.abs(width / 2);
+                     const radiusY = Math.abs(height / 2);
+                     ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+                      ctx.stroke();
+                 } else if (currentTool === 'line') {
+                     ctx.moveTo(drawStartX, drawStartY);
+                     ctx.lineTo(pos.x, pos.y);
+                      ctx.stroke();
+                 } else if (currentTool === 'arrow') {
+                      drawArrow(ctx, drawStartX, drawStartY, pos.x, pos.y);
+                 } else if (currentTool === 'table' && page.tableInfo) {
+                      drawTable(ctx, page.tableInfo.startX, page.tableInfo.startY, width, height, page.tableInfo.rows, page.tableInfo.cols);
                  }
-                 // Draw the last segment to the actual current position for a clean end
-                 ctx.lineTo(pos.x, pos.y);
-                 ctx.stroke();
+                 ctx.closePath();
              }
-
-        } else if (currentTool === 'eraser') { // Eraser uses simple lineTo
-             const ctx = page.ctx;
-             ctx.lineTo(pos.x, pos.y); // Corrected typo here from pos.x, pos.x
-             ctx.stroke();
-            [lastX, lastY] = [pos.x, pos.y];
-        }
-        else if (currentTool === 'rect' || currentTool === 'circle' || currentTool === 'line' || currentTool === 'arrow' || currentTool === 'table') { // Add table here
-          // Draw shape/table preview
-          if (savedCanvasState) {
-              ctx.putImageData(savedCanvasState, 0, 0);
-          }
-
-          // Set style for preview
-         ctx.strokeStyle = currentColor;
-         ctx.lineWidth = currentSize;
-         ctx.globalAlpha = 1.0;
-         ctx.globalCompositeOperation = 'source-over';
-
-         const width = pos.x - drawStartX;
-         const height = pos.y - drawStartY;
-
-         ctx.beginPath();
-         if (currentTool === 'rect') {
-             ctx.strokeRect(drawStartX, drawStartY, width, height);
-            } else if (currentTool === 'circle') {
-                // Approximate circle using ellipse
-                const centerX = drawStartX + width / 2;
-                const centerY = drawStartY + height / 2;
-                const radiusX = Math.abs(width / 2);
-                const radiusY = Math.abs(height / 2);
-                ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
-                 ctx.stroke();
-            } else if (currentTool === 'line') {
-                ctx.moveTo(drawStartX, drawStartY);
-                ctx.lineTo(pos.x, pos.y);
-                 ctx.stroke();
-            } else if (currentTool === 'arrow') { // Add arrow preview
-                 drawArrow(ctx, drawStartX, drawStartY, pos.x, pos.y);
-            }else if (currentTool === 'table') { // Add table drawing preview
-              if (page.tableInfo) {
-                  drawTable(ctx, page.tableInfo.startX, page.tableInfo.startY, width, height, page.tableInfo.rows, page.tableInfo.cols);
-              }
-            }
-            ctx.closePath(); // Close path after drawing shape
-        }
-        // --- End Existing drawing/shaping touchmove logic ---
+         } else if (isPanning && e.touches.length === 1 && currentTool === 'pan') {
+             // This is the button-activated single-touch pan move
+             e.preventDefault(); // Prevent default browser behavior for panning
+             const touch = e.touches[0];
+             const rect = canvas.getBoundingClientRect();
+             page.translateX = (touch.clientX - rect.left) - panStartX;
+             page.translateY = (touch.clientY - rect.top) - panStartY;
+             applyTransform(page);
+         }
+        // --- End Single Touch Drawing/Shaping or Button Pan Move ---
     };
 
     const handleTouchEnd = (e) => {
-        // e.preventDefault(); // Keep this line for now, adjust based on specific gesture count if needed
+        // e.preventDefault(); // Removed global preventDefault
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
@@ -319,214 +330,237 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!page || !page.ctx || !page.canvas) {
              console.error(`Page object, context, or canvas not found for touchend on canvas.`);
+             // Attempt to reset flags even on error
              savedCanvasState = null;
              isDrawing = false;
              isPanning = false;
+             isThreeFingerPanning = false;
              canvas.classList.remove("active");
              if (currentTool === 'pen') penPoints = [];
              if (currentTool === 'highlight') highlightPoints = [];
              if (page && page.tableInfo) delete page.tableInfo;
-              // --- Added for Two-Finger Zoom ---
-             initialPinchDistance = 0; // Reset zoom variables on error
+             initialPinchDistance = 0;
              initialPinchScale = 1;
-              // --- End Added ---
              return;
         }
 
-         // --- Added for Four-Finger Eraser ---
-         // Check if the current tool is eraser AND the number of active touches has dropped below 4.
-         // This indicates the four-finger gesture has ended.
-         if (currentTool === 'eraser' && e.touches.length < 4) {
-             e.preventDefault(); // Prevent default browser behavior when fingers lift
-             // Finalize the erasing stroke (if any was made during the gesture)
-             // Note: The actual drawing/erasing on the canvas happens in touchmove/touchend of the eraser tool itself.
-             // We just need to save the state after the temporary tool usage ends.
+        const ctx = page.ctx;
+        const touch = e.changedTouches[0]; // Get the touch that ended
+        const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
 
-             // If drawing was active during the 4-finger gesture, save the state.
-             if (isDrawing) {
-                 page.ctx.closePath(); // Close the eraser path
-                 saveToHistory(pageIndex); // Save the canvas state after erasing
+        // --- Handle Ending Gestures ---
+
+        // --- Four-Finger Eraser End ---
+        // Check if the current tool is eraser AND the number of active touches has dropped below 4.
+        // This indicates the four-finger gesture has ended.
+        if (currentTool === 'eraser' && e.touches.length < 4) {
+             e.preventDefault(); // Prevent default browser behavior when fingers lift
+             console.log(`Four-finger eraser gesture ended. Remaining touches: ${e.touches.length}`);
+
+             // If drawing was active during the 4-finger gesture, finalize and save.
+             // This check helps differentiate from a tap that just happens to have 4 fingers down.
+             if (isDrawing) { // Check if erasing action was actually happening
+                page.ctx.closePath(); // Close the eraser path
+                // Save the canvas state after erasing, but only if something was actually drawn/erased
+                // A simple way is to check if savedCanvasState was set (meaning drawing started)
+                 if (savedCanvasState) {
+                      saveToHistory(pageIndex); // Save the canvas state after erasing
+                      savedCanvasState = null; // Clear saved state
+                 }
+             } else {
+                 // If isDrawing was not true, it might have been just a quick tap with 4 fingers
+                 // with no significant movement. Clear saved state if it exists.
+                 savedCanvasState = null;
              }
-             savedCanvasState = null; // Clear saved state
+
 
              // Revert to the tool that was active before the four-finger gesture
-             setActiveTool(toolBeforeFourFingerEraser);
-             console.log(`Four-finger eraser deactivated. Reverted to ${currentTool}.`);
+             // Only revert if the eraser was activated *by* the 4-finger gesture
+             if (toolBeforeFourFingerEraser !== 'eraser') {
+                 setActiveTool(toolBeforeFourFingerEraser);
+                 console.log(`Four-finger eraser deactivated. Reverted to ${currentTool}.`);
+             } else {
+                  // If the eraser tool was already active before the 4-finger gesture,
+                  // just ensure isDrawing is false and the cursor is correct.
+                  setCanvasCursor(currentTool); // Ensure cursor is correct for current (eraser) tool
+             }
 
-             isDrawing = false; // Ensure drawing is off after lifting fingers
-             return; // Don't proceed with other touch logic
-         }
-         // --- End Added for Four-Finger Eraser ---
 
-         // --- Added for Two-Finger Zoom ---
-         // Check if initial pinch distance was set (meaning a zoom gesture started) AND the number of active touches has dropped below 2.
+             isDrawing = false; // Ensure drawing is off after lifting fingers for this gesture
+             // Do NOT return here immediately. Lifting fingers might transition to another gesture (e.g., 2 fingers for zoom).
+        }
+        // --- End Four-Finger Eraser End ---
+
+
+         // --- Two-Finger Zoom End ---
+         // Check if a zoom gesture was active (initialPinchDistance > 0) AND the number of active touches has dropped below 2.
          if (initialPinchDistance > 0 && e.touches.length < 2) {
              e.preventDefault(); // Prevent default browser behavior when fingers lift
+             console.log("Two-finger pinch/zoom ended.");
              initialPinchDistance = 0; // Reset pinch variables
              initialPinchScale = 1;
-             console.log("Two-finger pinch/zoom ended.");
-             // No history save needed for zoom transforms as they are applied directly to the element style.
-             return; // Don't proceed with other touch logic
+             // No history save needed for zoom transforms.
+             // Do NOT return here immediately. Lifting fingers might result in 0 touches (finalize other actions).
          }
-         // --- End Added for Two-Finger Zoom ---
+         // --- End Two-Finger Zoom End ---
 
-        // --- Added for Three-Finger Pan ---
-        // Check if panning was active AND the number of active touches has dropped below 3 (for the gesture)
-        // OR if currentTool was 'pan' AND the number of active touches has dropped to 0 (for the button-activated pan).
-        if (isPanning) { // Check if panning flag is true
-             if (e.touches.length < 3 && initialPinchDistance === 0) { // If 3-finger pan ended and not immediately starting 2-finger zoom
-                 e.preventDefault(); // Prevent default browser behavior
-                 isPanning = false;
-                 canvas.classList.remove("active"); // Remove grabbing cursor
-                 savedCanvasState = null; // Clear any saved state from potential pan start
-                 console.log("Three-finger pan ended.");
-                 // No history save needed for pan transforms.
-                 return; // Don't proceed with drawing logic
-             } else if (currentTool === 'pan' && e.touches.length === 0) {
-                 // This handles the button-activated single-touch pan end
+        // --- Three-Finger Pan End ---
+        // Check if the 3-finger pan flag was active AND the number of active touches has dropped below 3.
+        if (isThreeFingerPanning && e.touches.length < 3) {
+            e.preventDefault(); // Prevent default browser behavior when fingers lift
+             console.log(`Three-finger pan ended. Remaining touches: ${e.touches.length}`);
+            isThreeFingerPanning = false; // Deactivate 3-finger pan flag
+            // isPanning = false; // This flag is more for the button-activated pan, reset if needed.
+            canvas.classList.remove("active"); // Remove grabbing cursor
+            savedCanvasState = null; // Clear any saved state from potential pan start
+            // No history save needed for pan transforms.
+            // Do NOT return here immediately. Lifting fingers might result in 0 touches.
+        }
+        // --- End Three-Finger Pan End ---
+
+
+        // --- Handle Single Touch Drawing/Shaping or Button Pan End ---
+        // This block runs if a single-touch action (drawing, shaping, or button pan) was active
+        // AND the number of touches drops to 0 (meaning the last finger was lifted).
+         if ((isDrawing || isPanning) && e.touches.length === 0) {
+             e.preventDefault(); // Prevent default for finalizing the action
+
+             if (isPanning && currentTool === 'pan') {
+                  // Finalize button-activated single-touch pan
                   isPanning = false;
                   canvas.classList.remove("active");
                    savedCanvasState = null;
                    console.log("Button-activated pan ended.");
-                  return;
+                   // History is not saved for pan.
+             } else if (isDrawing) { // Finalize drawing or shaping action
+                 const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY); // Use the last known touch position
+
+                 // --- Existing drawing/shaping touchend logic ---
+                 if (currentTool === 'pen' || currentTool === 'highlight') {
+                      if (savedCanvasState) {
+                        ctx.putImageData(savedCanvasState, 0, 0);
+                        savedCanvasState = null;
+                      }
+
+                      const points = currentTool === 'pen' ? penPoints : highlightPoints;
+
+                      ctx.strokeStyle = currentColor;
+                      ctx.globalCompositeOperation = 'source-over';
+                      ctx.lineWidth = (currentTool === 'highlight') ? currentSize * 5 : currentSize;
+                      ctx.globalAlpha = (currentTool === 'highlight') ? 0.5 : 1.0;
+
+
+                      if (points.length > 1) {
+                          ctx.beginPath();
+                          ctx.moveTo(points[0].x, points[0].y);
+                          for (let i = 1; i < points.length; i++) {
+                               const p1 = points[i - 1];
+                               const p2 = points[i];
+                               const midPoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+                              ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+                          }
+                         ctx.lineTo(pos.x, pos.y);
+                          ctx.stroke();
+                      } else if (points.length === 1) {
+                          ctx.beginPath();
+                          ctx.arc(points[0].x, points[0].y, ctx.lineWidth / 2, 0, Math.PI * 2);
+                          ctx.fillStyle = ctx.strokeStyle;
+                          ctx.fill();
+                      }
+
+                     if (currentTool === 'pen') penPoints = [];
+                     if (currentTool === 'highlight') highlightPoints = [];
+
+                     saveToHistory(pageIndex);
+
+                  } else if (currentTool === 'eraser') {
+                      ctx.closePath();
+                      saveToHistory(pageIndex);
+                       savedCanvasState = null;
+                  }
+                  else if (currentTool === 'rect' || currentTool === 'circle' || currentTool === 'line' || currentTool === 'arrow' || currentTool === 'table') {
+                      if (savedCanvasState) {
+                         ctx.putImageData(savedCanvasState, 0, 0);
+                         savedCanvasState = null;
+                      }
+
+                      ctx.strokeStyle = currentColor;
+                      ctx.lineWidth = currentSize;
+                      ctx.globalAlpha = 1.0;
+                      ctx.globalCompositeOperation = 'source-over';
+
+                      const width = pos.x - drawStartX;
+                      const height = pos.y - drawStartY;
+
+                      if (Math.abs(width) > 2 || Math.abs(height) > 2) {
+                          ctx.beginPath();
+                          if (currentTool === 'rect') {
+                              ctx.strokeRect(drawStartX, drawStartY, width, height);
+                          } else if (currentTool === 'circle') {
+                             const centerX = drawStartX + width / 2;
+                             const centerY = drawStartY + height / 2;
+                             const radiusX = Math.abs(width / 2);
+                             const radiusY = Math.abs(height / 2);
+                             ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+                             ctx.stroke();
+                          } else if (currentTool === 'line') {
+                             ctx.moveTo(drawStartX, drawStartY);
+                             ctx.lineTo(pos.x, pos.y);
+                             ctx.stroke();
+                          } else if (currentTool === 'arrow') {
+                              drawArrow(ctx, drawStartX, drawStartY, pos.x, pos.y);
+                          } else if (currentTool === 'table' && page.tableInfo) {
+                               drawTable(ctx, page.tableInfo.startX, page.tableInfo.startY, width, height, page.tableInfo.rows, page.tableInfo.cols);
+                              delete page.tableInfo;
+                          }
+                          ctx.closePath();
+
+                         saveToHistory(pageIndex);
+                      } else {
+                          if (currentTool === 'table' && page.tableInfo) {
+                              delete page.tableInfo;
+                          }
+                      }
+                  }
+                  // --- End Existing drawing/shaping touchend logic ---
+
+                 isDrawing = false; // Deactivate drawing flag
              }
-        }
-        // --- End Added for Three-Finger Pan ---
 
+             // Reset composite operation and alpha to default after any action
+             ctx.globalCompositeOperation = 'source-over';
+             ctx.globalAlpha = 1.0;
 
-        if (!isDrawing || e.changedTouches.length === 0) {
-            // If drawing wasn't active or no touches ended, just return
-            return;
-        }
-        isDrawing = false; // Stop drawing
-
-        const ctx = page.ctx;
-        const touch = e.changedTouches[0]; // Get the touch that ended to finalize its position
-        const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
-
-
-         // --- Existing drawing/shaping touchend logic ---
-         if (currentTool === 'pen' || currentTool === 'highlight') { // Apply to both pen and highlight
-              // Restore the canvas to the state before starting the current stroke preview/draw
-              if (savedCanvasState) {
-                ctx.putImageData(savedCanvasState, 0, 0); // Restore state before final draw
-                savedCanvasState = null; // Clear saved state
-              }
-
-             const points = currentTool === 'pen' ? penPoints : highlightPoints;
-
-             // Set style for final stroke
-             ctx.strokeStyle = currentColor;
-             ctx.globalCompositeOperation = 'source-over'; // Draw on top
-
-             if (currentTool === 'highlight') {
-                 ctx.lineWidth = currentSize * 5;
-                 ctx.globalAlpha = 0.5; // Semi-transparency for highlight
-             } else if (currentTool === 'pen') { // Set styles for final pen stroke
-                 ctx.lineWidth = currentSize;
-                 ctx.globalAlpha = 1.0; // Opaque for pen
-             }
-
-             // Draw the final path using quadratic curves
-             if (points.length > 1) {
-                 ctx.beginPath();
-                 ctx.moveTo(points[0].x, points[0].y);
-
-                 for (let i = 1; i < points.length; i++) {
-                      const p1 = points[i - 1];
-                      const p2 = points[i];
-                      const midPoint = {
-                          x: (p1.x + p2.x) / 2,
-                          y: (p1.y + p2.y) / 2,
-                      };
-                     ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
-                 }
-                const lastPoint = points[points.length - 1];
-                // Draw the last segment to the actual point where the touch ended
-                ctx.lineTo(pos.x, pos.y);
-                 ctx.stroke();
-             } else if (points.length === 1) {
-                 // Draw a dot if there's only one point (tap without drag)
-                 ctx.beginPath();
-                 // Draw a small circle at the single point
-                 ctx.arc(points[0].x, points[0].y, ctx.lineWidth / 2, 0, Math.PI * 2);
-                 ctx.fillStyle = ctx.strokeStyle; // Fill with the stroke color
-                 ctx.fill();
-             }
-
-
-            if (currentTool === 'pen') penPoints = []; // Clear pen points
-            if (currentTool === 'highlight') highlightPoints = []; // Clear highlight points
-
-            saveToHistory(pageIndex); // Save state after drawing the stroke
-
-         } else if (currentTool === 'eraser') { // Eraser still uses simple closePath and save
-             ctx.closePath();
-             saveToHistory(pageIndex);
-              savedCanvasState = null; // Clear saved state after eraser stroke
-         }
-         else if (currentTool === 'rect' || currentTool === 'circle' || currentTool === 'line' || currentTool === 'arrow' || currentTool === 'table') { // Add table here
-             // Draw the final shape/table
-             if (savedCanvasState) {
-                ctx.putImageData(savedCanvasState, 0, 0); // Restore state before final draw
-                savedCanvasState = null; // Clear saved state
-             }
-
-             ctx.strokeStyle = currentColor;
-             ctx.lineWidth = currentSize;
-             ctx.globalAlpha = 1.0; // Shapes/Tables are usually not semi-transparent
-             ctx.globalCompositeOperation = 'source-over'; // Draw on top
-
-             const width = pos.x - drawStartX;
-             const height = pos.y - drawStartY;
-
-             // Only draw shape/table if there was significant movement (not just a tap)
-             if (Math.abs(width) > 2 || Math.abs(height) > 2) {
-                 ctx.beginPath();
-                 if (currentTool === 'rect') {
-                     ctx.strokeRect(drawStartX, drawStartY, width, height);
-                 } else if (currentTool === 'circle') {
-                    const centerX = drawStartX + width / 2;
-                    const centerY = drawStartY + height / 2;
-                    const radiusX = Math.abs(width / 2);
-                    const radiusY = Math.abs(height / 2);
-                    ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
-                    ctx.stroke();
-                 } else if (currentTool === 'line') {
-                    ctx.moveTo(drawStartX, drawStartY);
-                    ctx.lineTo(pos.x, pos.y);
-                    ctx.stroke();
-                 } else if (currentTool === 'arrow') {
-                     drawArrow(ctx, drawStartX, drawStartY, pos.x, pos.y);
-                 } else if (currentTool === 'table' && page.tableInfo) { // Draw the final table
-                      drawTable(ctx, page.tableInfo.startX, page.tableInfo.startY, width, height, page.tableInfo.rows, page.tableInfo.cols);
-                     // Clear temporary table info after drawing
-                     delete page.tableInfo;
-                 }
-                 ctx.closePath(); // Close path after drawing the final shape/table
-
-                saveToHistory(pageIndex); // Save after drawing the shape/table
-             } else {
-                 // If it was just a tap, clear the temporary table info if it exists for the table tool
-                 if (currentTool === 'table' && page.tableInfo) {
-                     delete page.tableInfo;
-                 }
-                 // For other tools, a tap might not result in a drawing action, so no save needed.
+             // Clear redo stack for the current page whenever a new drawing or shaping action is performed
+              // Pan and zoom do not clear the redo stack as they are view transforms.
+             if (currentTool !== 'pan') {
+                 page.redoStack = [];
+                 updateUndoRedoButtons(); // Update button states
              }
          }
-         // --- End Existing drawing/shaping touchend logic ---
 
+        // If touches remain, but none of the active gesture conditions were met, it means
+        // fingers were lifted during a multi-touch gesture, and we should check if
+        // a *new* gesture can start based on the remaining fingers. This is handled
+        // by the initial checks in handleTouchStart when a touch is *added*,
+        // and by the conditions in handleTouchEnd checking remaining touches.
 
-        // Reset composite operation and alpha to default after any drawing/shaping action
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1.0;
-
-        // Clear redo stack for the current page whenever a new action is performed (drawing or shape)
-        // Pan and zoom do not clear the redo stack as they are view transforms, not content changes.
-        if (currentTool !== 'pan') { // Only clear redo stack if the tool was not pan
-             page.redoStack = [];
-             updateUndoRedoButtons(); // Update button states
+        // We should also reset flags for gestures that didn't end explicitly above
+        // but whose touch count no longer matches.
+        if (e.touches.length < 3 && isThreeFingerPanning) {
+             isThreeFingerPanning = false;
+             canvas.classList.remove("active");
+             savedCanvasState = null;
+             console.log("Three-finger pan implicitly ended.");
         }
+        if (e.touches.length < 2 && initialPinchDistance > 0) {
+             initialPinchDistance = 0;
+             initialPinchScale = 1;
+             console.log("Two-finger zoom implicitly ended.");
+        }
+         // If the eraser tool is active but not via the 4-finger gesture (toolBeforeFourFingerEraser === 'eraser'),
+         // and touches drop to 0, the single-touch eraser logic in the isDrawing block above handles it.
+         // If touches drop below 4 and the tool was set by the 4-finger gesture, the 4-finger end block handles it.
     };
 
      const handleTouchCancel = (e) => {
@@ -538,59 +572,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!page || !page.ctx) {
              console.error(`Page object or context not found for touchcancel on canvas.`);
-             savedCanvasState = null;
-             isDrawing = false;
-             isPanning = false;
-             canvas.classList.remove("active");
-             // Clear temporary points arrays and reset zoom variables in case of cancel
-             if (currentTool === 'pen') penPoints = [];
-             if (currentTool === 'highlight') highlightPoints = [];
-             if (page && page.tableInfo) delete page.tableInfo;
-             // --- Added for Two-Finger Zoom ---
-             initialPinchDistance = 0;
-             initialPinchScale = 1;
-              // --- End Added ---
-             return;
         }
 
-         // If drawing or panning was in progress, cancel it
-        if (isDrawing || isPanning) {
-             console.log(`Touch cancelled during ${isDrawing ? 'drawing' : 'panning'}. Restoring canvas state if necessary.`);
+        console.log(`Touch cancelled during gesture. Restoring canvas state if necessary.`);
 
-            // Restore the canvas state to before the touch started
-            if (savedCanvasState) {
+        // Restore the canvas state to before the touch started if saved
+        if (savedCanvasState) {
+           if (page && page.ctx) { // Add null checks
                page.ctx.putImageData(savedCanvasState, 0, 0);
-               savedCanvasState = null; // Clear saved state
-            }
+           }
+           savedCanvasState = null; // Clear saved state
+        }
 
-             isDrawing = false;
-             isPanning = false;
-             canvas.classList.remove("active"); // Remove grabbing cursor
+         // Reset all gesture flags and temporary data
+         isDrawing = false;
+         isPanning = false;
+         isThreeFingerPanning = false;
+         canvas.classList.remove("active"); // Remove grabbing cursor
 
-             // Clear any temporary points or table info
-             if (currentTool === 'pen') penPoints = [];
-             if (currentTool === 'highlight') highlightPoints = [];
-             if (page.tableInfo) delete page.tableInfo;
-             // --- Added for Two-Finger Zoom ---
-             initialPinchDistance = 0; // Reset pinch variables on cancel
-             initialPinchScale = 1;
-              // --- End Added ---
+         if (currentTool === 'pen') penPoints = [];
+         if (currentTool === 'highlight') highlightPoints = [];
+         if (page && page.tableInfo) delete page.tableInfo;
 
-            // If the 4-finger eraser was active, revert to the previous tool on cancel
-            if (currentTool === 'eraser' && toolBeforeFourFingerEraser !== 'eraser') {
-                 setActiveTool(toolBeforeFourFingerEraser);
-                 console.log("Four-finger eraser cancelled. Reverted to previous tool.");
-            }
+         initialPinchDistance = 0;
+         initialPinchScale = 1;
 
 
-            // No history save on cancel - just revert to the previous state
-            // The state before the touch was saved in touchstart (as savedCanvasState)
-            // and we've just restored it.
+        // If the 4-finger eraser was active due to the gesture, revert the tool on cancel
+        if (currentTool === 'eraser' && toolBeforeFourFingerEraser !== 'eraser') {
+             setActiveTool(toolBeforeFourFingerEraser);
+             console.log("Four-finger eraser cancelled. Reverted to previous tool.");
         }
 
          // Reset composite operation and alpha
-         page.ctx.globalCompositeOperation = 'source-over';
-         page.ctx.globalAlpha = 1.0;
+         if (page && page.ctx) { // Add null checks
+             page.ctx.globalCompositeOperation = 'source-over';
+             page.ctx.globalAlpha = 1.0;
+         }
 
          updateUndoRedoButtons(); // Update button states as history might have been affected by restore
      };
@@ -626,29 +644,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
         // Disable default touch actions like double-tap zoom on the canvas itself
-        // This might be redundant due to e.preventDefault() in handlers, but good practice.
-        canvas.style.touchAction = 'none';
-        canvas.style.msTouchAction = 'none'; // For Internet Explorer
+        // This is important to prevent interference with custom gestures.
+        canvas.style.touchAction = 'none'; // Modern standard
+        canvas.style.msTouchAction = 'none'; // For Internet Explorer (older spec)
 
         canvas.dataset.touchListenersAdded = 'true'; // Mark as added
         console.log(`Touch event listeners added to canvas for page ${pageIndex + 1}.`);
     };
 
 
-    // Attach listeners to any canvases that might exist when this script loads initially
-    // This is a fallback/initial attachment, but the main attachment should be in createNewPage
+    // Initial attachment: Attach listeners to any canvases that might exist when this script loads.
+    // This is a fallback and might not be sufficient if pages are added dynamically *after* this script runs.
+    // Ensure `initApp` in Script.js explicitly calls `window.addTouchEventListenersToCanvas` for each page
+    // after it is created.
     document.querySelectorAll('.page canvas').forEach((canvas, index) => {
-         // Ensure the page data exists before attempting to add listeners
-         // This is important because this script might load before pages are fully initialized in Script.js
-         // A more robust solution is to ensure initApp in Script.js calls addTouchEventListenersToCanvas
-         // for each page *after* the page object is created and added to the pages array.
-         if (pages && pages[index]) { // Add check for pages array existence
+         // Ensure the pages array and the specific page data exist before attempting to add listeners.
+         // This script might load before `initApp` in Script.js has fully populated the `pages` array.
+         // The ideal place to call `addTouchEventListenersToCanvas` is within `createNewPage` in Script.js.
+         // This loop serves as a potential initial setup if Script.js is structured to allow it.
+         // A more reliable integration involves modifying Script.js's page creation logic.
+         if (pages && pages[index]) { // Check for pages array and page object existence
               window.addTouchEventListenersToCanvas(canvas, index);
          } else {
-             console.warn(`Page data not fully initialized for canvas at index ${index} during initial touch listener attachment.`);
-             // You might need to ensure `initApp` in Script.js handles calling
-             // `window.addTouchEventListenersToCanvas(canvas, pages.length - 1);`
-             // right after `pages.push(pageData);` in `createNewPage()`.
+             // console.warn(`Page data not fully initialized for canvas at index ${index} during initial touch listener attachment. Ensure createNewPage calls addTouchEventListenersToCanvas.`);
+             // Log a warning, but the main integration should happen in createNewPage.
          }
     });
 

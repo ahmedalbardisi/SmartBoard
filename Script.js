@@ -1,6 +1,6 @@
 /**
  * السبورة الذكية - أساسيات البرمجة
- * Smart Whiteboard - Core JavaScript Functionality
+ * Smart Whiteboard - Core JavaScript Functionality 
  */
 
 // -------------------- المتغيرات الرئيسية وتهيئة التطبيق --------------------
@@ -44,8 +44,8 @@ const penBtn = document.getElementById("pen-btn") || null;
 const highlightBtn = document.getElementById("highlight-btn") || null;
 const eraserBtn = document.getElementById("eraser-btn") || null;
 const panBtn = document.getElementById("pan-btn") || null;
-const selectBtn = document.getElementById("select-btn") || null; // Keep reference if needed later
-const textBtn = document.getElementById("text-btn") || null;   // Keep reference if needed later
+// const selectBtn = document.getElementById("select-btn") || null; // Keep reference if needed later
+// const textBtn = document.getElementById("text-btn") || null;   // Keep reference if needed later
 const colorPicker = document.getElementById("color-picker") || null;
 const sizeSlider = document.getElementById("pen-size-slider") || null;
 const sizeValue = document.getElementById("size-value") || null;
@@ -809,9 +809,55 @@ function setupCanvasEventListeners(canvas, pageIndex) {
    canvas.addEventListener('contextmenu', function(e) {
       e.preventDefault();
    });
+
+
+   function setupCanvasEventListeners(canvas, pageIndex) {
+    const page = pages[pageIndex]; // Get the page object
+  
+  
+    if (!canvas || !page || !page.ctx) { // Add null checks for canvas and context
+        console.error(`Canvas, page object, or context not found for page index ${pageIndex}. Cannot setup event listeners.`);
+        return;
+    }
+  
+    // Existing mouse event listeners go here...
+  
+    canvas.addEventListener("mousedown", (e) => {
+        // ... existing mousedown logic ...
+    });
+  
+    canvas.addEventListener("mousemove", (e) => {
+        // ... existing mousemove logic ...
+    });
+  
+    canvas.addEventListener("mouseup", (e) => {
+        // ... existing mouseup logic ...
+    });
+  
+    canvas.addEventListener("mouseleave", () => {
+        // ... existing mouseleave logic ...
+    });
+  
+     // Prevent context menu on canvas
+     canvas.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+     });
+  
+     // ======= الكود الجديد الذي ستضيفه هنا =======
+     // Add touch event listeners using the function from touch-events.js
+     if (window.addTouchEventListenersToCanvas) {
+         window.addTouchEventListenersToCanvas(canvas, pageIndex);
+     } else {
+         console.error("addTouchEventListenersToCanvas function not found. touch-events.js might not be loaded correctly.");
+     }
+     // ===========================================
+  }
+
+
 }
 
 // Function to get mouse position relative to canvas, considering pan and zoom
+// Function to get mouse or touch position relative to canvas, considering pan and zoom
 function getMousePos(canvas, evt, currentScale, currentTranslateX, currentTranslateY) {
     if (!canvas) { // Add null check for canvas
          console.error("Cannot get mouse position: canvas element is null.");
@@ -819,12 +865,18 @@ function getMousePos(canvas, evt, currentScale, currentTranslateX, currentTransl
     }
     const rect = canvas.getBoundingClientRect();
 
-    // Get mouse position relative to the canvas's top-left corner in the viewport
-    const mouseX = evt.clientX - rect.left;
-    const mouseY = evt.clientY - rect.top;
+    // Determine if it's a mouse event or a touch object
+    // Touch events have a 'touches' list, single touch uses touches[0]
+    // We check if clientX exists directly on the event or on the first touch
+    const clientX = (evt.clientX !== undefined) ? evt.clientX : (evt.touches && evt.touches[0] ? evt.touches[0].clientX : (evt.changedTouches && evt.changedTouches[0] ? evt.changedTouches[0].clientX : 0));
+    const clientY = (evt.clientY !== undefined) ? evt.clientY : (evt.touches && evt.touches[0] ? evt.touches[0].clientY : (evt.changedTouches && evt.changedTouches[0] ? evt.changedTouches[0].clientY : 0));
+
+
+    // Calculate mouse/touch position relative to the canvas's top-left corner in the viewport
+    const mouseX = clientX - rect.left;
+    const mouseY = clientY - rect.top;
 
     // Divide by the current scale to get the position in the unscaled canvas coordinates
-    // Remove the multiplication by scaleFactorX and scaleFactorY
     const canvasX = mouseX / currentScale;
     const canvasY = mouseY / currentScale;
 

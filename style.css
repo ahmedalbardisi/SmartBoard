@@ -1401,3 +1401,8 @@ button.page-action-btn.delete-page-btn:hover {
   border-radius: 4px;
   margin-bottom: 8px;
 }
+.pages_all_span {
+  display: grid
+;
+  justify-items: center;
+}

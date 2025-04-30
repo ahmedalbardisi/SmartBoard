@@ -4,7 +4,42 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="السبورة الذكية لتسجيل الملاحظات والرسم" />
-    <title>السبورة الذكية</title>
+
+    <title>السبورة الذكية | Smart Whiteboard</title>
+
+    <link rel="icon" href="./img/whiteboard.png" type="image/x-png" />
+
+    <meta name="robots" content="index, follow" />
+
+    <link
+      rel="canonical"
+      href="https://ahmedalbardisi.github.io/SmartBoard/index.html"
+    />
+
+    <meta property="og:title" content="السبورة الذكية | Smart Whiteboard" />
+    <meta
+      property="og:description"
+      content="تطبيق السبورة الذكية لتسجيل الملاحظات والرسم بسهولة."
+    />
+    <meta
+      property="og:image"
+      content="https://ahmedalbardisi.github.io/SmartBoard/img/Screen.jpeg"
+    />
+    <meta
+      property="og:url"
+      content="https://ahmedalbardisi.github.io/SmartBoard/index.html"
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="السبورة الذكية | Smart Whiteboard" />
+    <meta
+      name="twitter:description"
+      content="تطبيق السبورة الذكية لتسجيل الملاحظات والرسم بسهولة."
+    />
+    <meta
+      name="twitter:image"
+      content="https://ahmedalbardisi.github.io/SmartBoard/img/Screen.jpeg"
+    />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
@@ -17,6 +52,7 @@
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   </head>
+
   <body>
     <!-- Header أعلى الصفحة -->
     <header class="header">
@@ -31,8 +67,10 @@
         <button id="zoom-out" title="تصغير">
           <i class="fas fa-search-minus"></i>
         </button>
-        <span id="page-indicator">1 / 1 </span>
-        <span id="zoom-percentage">100%</span>
+        <div class="pages_all_span">
+          <span id="page-indicator">1 / 1 </span>
+          <span id="zoom-percentage">100%</span>
+        </div>
         <button id="zoom-in" title="تكبير">
           <i class="fas fa-search-plus"></i>
         </button>
@@ -74,12 +112,6 @@
           <button id="pan-btn" class="tool-btn" title="تنقل">
             <i class="fas fa-hand-paper"></i>
           </button>
-          <!-- <button id="select-btn" class="tool-btn" title="تحديد">
-            <i class="fas fa-mouse-pointer"></i>
-          </button>
-          <button id="text-btn" class="tool-btn" title="نص">
-            <i class="fas fa-font"></i>
-          </button> -->
         </div>
       </div>
 
@@ -194,13 +226,6 @@
         <option value="lines">خطوط</option>
         <option value="grid">شبكة</option>
         <option value="plain">فارغة</option>
-      </select>
-      <hr />
-      <label>نوع الخط:</label>
-      <select id="font-type">
-        <option value="Arial">Arial</option>
-        <option value="Cairo" selected>Cairo</option>
-        <option value="Tajawal">Tajawal</option>
       </select>
       <hr />
       <label>إعدادات الألوان المخصصة:</label>
@@ -336,14 +361,10 @@
 
       <!-- منطقة الصفحات -->
       <main class="canvas-area" id="pages-container">
-        <div class="cont_pags">
-          <!-- <div class="page">
-            <div class="page-actions"></div>
-            <canvas width="800" height="1100"></canvas>
-          </div>  -->
-        </div>
+        <div class="cont_pags"></div>
       </main>
     </div>
     <script src="Script.js"></script>
+    <script src="touch-events.js"></script>
   </body>
 </html>

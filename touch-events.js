@@ -1,6 +1,7 @@
 /**
  * Smart Whiteboard - Touch Events Functionality
  * Handles touch interactions for drawing, highlighting, erasing, and panning.
+ * Includes improved multi-touch gesture recognition with delays and differentiation.
  */
 
 // Ensure this script runs after the main Script.js and can access its variables and functions.
@@ -10,33 +11,50 @@
 // Functions like getMousePos, saveToHistory, updateUndoRedoButtons, applyTransform,
 // drawArrow, drawTable, setActiveTool, setCanvasCursor are also assumed to be globally available.
 
-// Add these variables near the other variable declarations at the top
+// --- State Variables ---
 let toolBeforeFourFingerEraser = "pen"; // Stores the tool active before activating the 4-finger eraser
 let initialPinchDistance = 0; // Stores the distance between fingers at the start of a pinch gesture
 let initialPinchScale = 1; // Stores the canvas scale at the start of a pinch gesture
 let isThreeFingerPanning = false; // Flag to indicate if the 3-finger pan gesture is active
 let isMultiTouchGestureActive = false; // Flag to indicate if ANY multi-touch gesture (2, 3, or 4 fingers) is active
 
-// --- Added for delayed touch recognition ---
+// --- Variables for delayed touch recognition ---
 let singleTouchTimer = null; // Timer for delayed single-touch actions
 let twoFingerGestureTimer = null; // Timer for determining 2-finger gesture (zoom or erase)
 const gestureDetectionDelay = 200; // Milliseconds to wait before confirming a single-touch or 2-finger gesture
 const minZoomDistanceThreshold = 20; // Minimum distance change in pixels to trigger zoom
-const minEraserTapDistanceThreshold = 30; // Maximum initial distance between 2 fingers for it to be considered a potential eraser tap
+const minEraserTapDistanceThreshold = 40; // Maximum initial distance between 2 fingers for it to be considered a potential eraser tap or quick close gesture
 
-// Variables to store touch data during the delay
+// Variables to store touch data during the delay for single touch
 let delayedTouchStartData = null;
 
 
 document.addEventListener('DOMContentLoaded', () => {
-    // It's better to attach touch listeners after pages are created in initApp
-    // We can add a function call in Script.js initApp or listen for a custom event
-    // or simply wait a moment, but a cleaner way is to integrate this into the page creation process.
+    // It's best practice to attach touch listeners after pages are created and initialized.
+    // The `window.addTouchEventListenersToCanvas` function is provided to be called from Script.js
+    // within the `createNewPage` function after a canvas element is created and added to the DOM.
 
-    // Let's define the touch event handlers first
+    // --- Helper Function ---
+    /**
+     * Calculates the distance between two touch points.
+     * @param {Touch} touch1 The first touch object.
+     * @param {Touch} touch2 The second touch object.
+     * @returns {number} The distance in pixels.
+     */
+    function getDistanceBetweenTouches(touch1, touch2) {
+        if (!touch1 || !touch2) return 0; // Return 0 if touches are invalid
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+
+    // --- Touch Event Handlers ---
+
     const handleTouchStart = (e) => {
-        // Prevent default browser behaviors like scrolling and zooming for recognized gestures.
-        // We'll apply preventDefault conditionally based on the number of touches and gesture state.
+        // Prevent default browser behaviors like scrolling and zooming by default.
+        // Specific gestures will handle their own preventDefault based on recognition.
+        e.preventDefault();
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
@@ -47,186 +65,201 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // --- Clear existing timers and reset flags if starting a completely new interaction ---
-        // If fingers are added to an *existing* multi-touch gesture, we don't reset everything.
-        // Only reset if starting with 0 or 1 finger, or the number of touches changes significantly.
-        if (e.touches.length <= 1) {
-             clearTimeout(singleTouchTimer);
-             singleTouchTimer = null;
-             clearTimeout(twoFingerGestureTimer);
-             twoFingerGestureTimer = null;
-             delayedTouchStartData = null; // Clear stored data
+        // --- Always clear timers on any touchstart event ---
+        // This ensures that if a new gesture starts (even by adding a finger),
+        // any pending delayed actions from previous touches are cancelled.
+        clearTimeout(singleTouchTimer);
+        singleTouchTimer = null;
+        clearTimeout(twoFingerGestureTimer);
+        twoFingerGestureTimer = null;
+        delayedTouchStartData = null; // Clear stored data for single touch
 
-             // Reset multi-touch specific flags
-             isThreeFingerPanning = false;
-             initialPinchDistance = 0;
-             initialPinchScale = 1;
-             isMultiTouchGestureActive = false; // Assume not multi-touch until confirmed
-             // isDrawing and isPanning flags are managed by their respective logic branches
-        } else {
-            // If starting with multiple fingers, assume a multi-touch gesture might be intended.
-            // Clear single-touch timer immediately.
-            clearTimeout(singleTouchTimer);
-            singleTouchTimer = null;
-            delayedTouchStartData = null; // Clear stored data
+        // --- Reset specific multi-touch flags if the touch count is low, indicating a potential new start ---
+        // This helps transition from multi-touch back to single-touch or a different multi-touch.
+        if (e.touches.length <= 1) {
+            isThreeFingerPanning = false;
+            initialPinchDistance = 0;
+            initialPinchScale = 1;
+            // isMultiTouchGestureActive will be set based on the checks below
+            // isDrawing and isPanning flags are managed by their respective logic branches
         }
 
 
         // --- Prioritize Multi-finger Gestures based on initial touch count ---
 
-        // --- Four-Finger Eraser Start (Immediate) ---
-        // If exactly 4 fingers are down *initially*, we can assume this gesture immediately.
-        if (e.touches.length === 4) {
-             e.preventDefault(); // Prevent default behavior
-             clearTimeout(twoFingerGestureTimer); // Clear any pending 2-finger timer
-             twoFingerGestureTimer = null;
-
-             // Only activate if no other gesture is currently considered active (prevents starting 4-finger while already 3-finger panning)
-             if (!isDrawing && !isPanning && !isThreeFingerPanning && initialPinchDistance === 0) {
-                 isMultiTouchGestureActive = true; // Set flag
-                 toolBeforeFourFingerEraser = currentTool; // Save the current tool
-                 setActiveTool("eraser"); // Switch to the eraser tool
-                 console.log("Four-finger eraser activated.");
-                 // Prepare for erasing on touchstart
-                 isDrawing = true; // Use isDrawing flag for the temporary erase action
-                 const touch = e.touches[0];
-                 const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY);
-                 [lastX, lastY] = [pos.x, pos.y];
-                 page.ctx.beginPath();
-                 page.ctx.lineWidth = currentSize * 1.5; // Use eraser size
-                 page.ctx.globalCompositeOperation = 'destination-out'; // Erasing mode
-                 page.ctx.moveTo(lastX, lastY);
-             }
-             return; // Consume the touchstart event if 4 fingers are detected
+        // --- Four-Finger Eraser Start (Immediate Recognition) ---
+        // If exactly 4 fingers are down *initially*, and no other gesture is active, assume this gesture immediately.
+        if (e.touches.length === 4 && !isDrawing && !isPanning && !isThreeFingerPanning && initialPinchDistance === 0) {
+             isMultiTouchGestureActive = true; // Set flag
+             toolBeforeFourFingerEraser = currentTool; // Save the current tool
+             setActiveTool("eraser"); // Switch to the eraser tool (updates cursor)
+             console.log("Four-finger eraser activated.");
+             // Prepare for erasing on touchstart - similar to single-touch eraser start
+             isDrawing = true; // Use isDrawing flag for the temporary erase action
+             const touch = e.touches[0]; // Use the first touch for the starting point
+             const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY);
+             [lastX, lastY] = [pos.x, pos.y];
+             page.ctx.beginPath();
+             page.ctx.lineWidth = currentSize * 1.5; // Use eraser size
+             page.ctx.globalCompositeOperation = 'destination-out'; // Erasing mode
+             page.ctx.moveTo(lastX, lastY);
+             return; // Consume the touchstart event
         }
         // --- End Four-Finger Eraser Start ---
 
-        // --- Three-Finger Pan Start (Immediate) ---
-        // If exactly 3 fingers are down *initially*, assume this gesture immediately.
-        if (e.touches.length === 3) {
-            e.preventDefault(); // Prevent default behavior
-            clearTimeout(twoFingerGestureTimer); // Clear any pending 2-finger timer
-             twoFingerGestureTimer = null;
-
-             // Only activate if no other gesture is currently considered active (prevents starting 3-finger while already 4-finger erasing)
-             if (!isDrawing && !isPanning && initialPinchDistance === 0 && currentTool !== 'eraser' ) { // Don't interfere with 4-finger erase
-                isMultiTouchGestureActive = true; // Set flag
-                isThreeFingerPanning = true; // Activate 3-finger pan flag
-                const touch = e.touches[0]; // Use the first touch for calculating movement
-                const rect = canvas.getBoundingClientRect();
-                panStartX = touch.clientX - rect.left - page.translateX;
-                panStartY = touch.clientY - rect.top - page.translateY;
-                canvas.classList.add("active"); // grabbing cursor
-                console.log("Three-finger pan started.");
-             }
-            return; // Consume the touchstart event if 3 fingers are detected
+        // --- Three-Finger Pan Start (Immediate Recognition) ---
+        // If exactly 3 fingers are down *initially*, and no other gesture is active, assume this gesture immediately.
+        if (e.touches.length === 3 && !isDrawing && !isPanning && initialPinchDistance === 0 && currentTool !== 'eraser' && toolBeforeFourFingerEraser !== 'eraser') { // Don't interfere with 4-finger erase or if eraser was active
+            isMultiTouchGestureActive = true; // Set flag
+            isThreeFingerPanning = true; // Activate 3-finger pan flag
+            const touch = e.touches[0]; // Use the first touch for calculating movement
+            const rect = canvas.getBoundingClientRect();
+            // Store the starting position relative to the canvas's viewport position
+            panStartX = touch.clientX - rect.left - page.translateX;
+            panStartY = touch.clientY - rect.top - page.translateY;
+            canvas.classList.add("active"); // grabbing cursor
+            console.log("Three-finger pan started.");
+            return; // Consume the touchstart event
         }
         // --- End Three-Finger Pan Start ---
 
-        // --- Two-Finger Gesture Start (Delayed) ---
-        // If exactly 2 fingers are down *initially*, start a timer to differentiate zoom/erase.
-        if (e.touches.length === 2) {
-            e.preventDefault(); // Prevent default browser zoom immediately for 2 fingers
-             // Only start the timer if no other gesture is currently considered active
-             if (!isDrawing && !isPanning && !isThreeFingerPanning && currentTool !== 'eraser' ) { // Don't interfere
-                 isMultiTouchGestureActive = true; // Assume multi-touch might be active
-                 initialPinchDistance = getDistanceBetweenTouches(e.touches[0], e.touches[1]);
-                 initialPinchScale = page.scale; // Store the current scale
-                 console.log("Two-finger gesture detected. Starting timer to differentiate zoom/erase.");
+        // --- Two-Finger Gesture Start (Delayed Recognition for Zoom vs. Eraser) ---
+        // If exactly 2 fingers are down *initially*, start a timer to differentiate zoom/erase based on subsequent movement or lift.
+        if (e.touches.length === 2 && !isDrawing && !isPanning && !isThreeFingerPanning && currentTool !== 'eraser' && toolBeforeFourFingerEraser !== 'eraser') { // Don't interfere with other gestures
+             isMultiTouchGestureActive = true; // Assume multi-touch might be active
+             // Store initial positions and distance for differentiation later
+             const touch1 = e.touches[0];
+             const touch2 = e.touches[1];
+             initialPinchDistance = getDistanceBetweenTouches(touch1, touch2);
+             initialPinchScale = page.scale; // Store the current scale
+             console.log("Two-finger gesture detected. Starting timer to differentiate zoom/erase.");
 
-                 // Set a timer to check again after the delay
-                 twoFingerGestureTimer = setTimeout(() => {
-                     // This function runs if 2 fingers are *still* down after the delay
-                     if (e.touches.length === 2) {
-                         const currentPinchDistance = getDistanceBetweenTouches(e.touches[0], e.touches[1]);
-                         const distanceChange = Math.abs(currentPinchDistance - initialPinchDistance);
+             // Store relevant data for the timer callback
+             delayedTouchStartData = {
+                  canvas: canvas,
+                  page: page,
+                  touch1: touch1, // Store initial touch objects for distance check later
+                  touch2: touch2,
+                  initialPinchDistance: initialPinchDistance,
+                  initialPinchScale: initialPinchScale,
+                  toolBeforeGesture: currentTool // Store tool before potential erase switch
+             };
 
-                         // If distance changed significantly, it's a zoom.
-                         if (distanceChange > minZoomDistanceThreshold) {
-                             console.log("Two-finger gesture confirmed as Zoom.");
-                             // Zoom logic will be handled in touchmove since movement occurred.
-                             // No need to do anything else here, just let touchmove take over.
-                         }
-                         // If distance did NOT change significantly and initial distance was small, it's a potential erase tap.
-                         else if (initialPinchDistance < minEraserTapDistanceThreshold) {
-                             console.log("Two-finger gesture confirmed as Eraser Tap.");
-                             // Trigger eraser tap action immediately here.
-                             // Simulate a quick erase action at the center point.
-                             toolBeforeFourFingerEraser = currentTool; // Save current tool
-                             setActiveTool("eraser"); // Temporarily switch to eraser
-                             // Perform a small erase at the center of the initial touches
-                             const touch1 = e.touches[0];
-                             const touch2 = e.touches[1];
-                             const centerX = (touch1.clientX + touch2.clientX) / 2;
-                             const centerY = (touch1.clientY + touch2.clientY) / 2;
-                             const canvasRect = canvas.getBoundingClientRect();
-                             const pos = getMousePos(canvas, { clientX: centerX - canvasRect.left, clientY: centerY - canvasRect.top }, page.scale, page.translateX, page.translateY);
 
-                             page.ctx.globalCompositeOperation = 'destination-out';
-                             page.ctx.lineWidth = currentSize * 1.5; // Eraser size
+             // Set a timer to check the state after the delay
+             twoFingerGestureTimer = setTimeout(() => {
+                 // This function runs if 2 fingers are *still* down after the delay
+                 if (e.touches.length === 2 && delayedTouchStartData) {
+                     const currentPinchDistance = getDistanceBetweenTouches(e.touches[0], e.touches[1]);
+                     const distanceChange = Math.abs(currentPinchDistance - delayedTouchStartData.initialPinchDistance);
 
-                             page.ctx.beginPath();
-                             page.ctx.arc(pos.x, pos.y, page.ctx.lineWidth / 2, 0, Math.PI * 2); // Draw a small circle to erase
-                             page.ctx.fill(); // Fill the circle
+                     // If distance changed significantly, it's a zoom.
+                     if (distanceChange > minZoomDistanceThreshold) {
+                         console.log("Two-finger gesture confirmed as Zoom (via timer).");
+                         // Zoom logic will be handled in touchmove since movement occurred.
+                         // No need to do anything else here, just let touchmove take over.
+                         // initialPinchDistance and initialPinchScale are already set.
+                     }
+                     // If distance did NOT change significantly and initial distance was small, it's a potential erase tap.
+                     else if (delayedTouchStartData.initialPinchDistance < minEraserTapDistanceThreshold) {
+                         console.log("Two-finger gesture confirmed as Eraser Tap (via timer).");
+                         // Trigger eraser tap action immediately here.
+                         // Simulate a quick erase action at the center point.
+                         const data = delayedTouchStartData;
+                          toolBeforeFourFingerEraser = data.toolBeforeGesture; // Restore saved toolBeforeFourFingerEraser
+                         setActiveTool("eraser"); // Temporarily switch to eraser
 
-                             page.ctx.globalCompositeOperation = 'source-over'; // Reset composite mode
+                         const touch1 = e.touches[0]; // Use current touch positions
+                         const touch2 = e.touches[1];
+                         const centerX = (touch1.clientX + touch2.clientX) / 2;
+                         const centerY = (touch1.clientY + touch2.clientY) / 2;
+                         const canvasRect = canvas.getBoundingClientRect();
+                         const pos = getMousePos(canvas, { clientX: centerX - canvasRect.left, clientY: centerY - canvasRect.top }, page.scale, page.translateX, page.translateY);
 
-                             saveToHistory(pageIndex); // Save the erase action
-                             // Revert tool immediately after the action for a tap
-                             setActiveTool(toolBeforeFourFingerEraser);
-                             console.log("Two-finger eraser tap action completed.");
-                              // Reset flags after the tap action
-                             isMultiTouchGestureActive = false;
-                             initialPinchDistance = 0;
-                             initialPinchScale = 1;
-                         } else {
-                              console.log("Two-finger gesture: Neither zoom nor erase tap confirmed after delay.");
-                              // If it wasn't a zoom or close tap after the delay, reset flags
-                              isMultiTouchGestureActive = false;
-                              initialPinchDistance = 0;
-                              initialPinchScale = 1;
-                         }
+                         page.ctx.globalCompositeOperation = 'destination-out';
+                         page.ctx.lineWidth = currentSize * 1.5; // Use eraser size
+
+                         page.ctx.beginPath();
+                         page.ctx.arc(pos.x, pos.y, page.ctx.lineWidth / 2, 0, Math.PI * 2); // Draw a small circle to erase
+                         page.ctx.fill(); // Fill the circle
+
+                         page.ctx.globalCompositeOperation = 'source-over'; // Reset composite mode
+
+                         saveToHistory(pageIndex); // Save the erase action
+                         // Revert tool immediately after the action for a tap
+                         setActiveTool(toolBeforeFourFingerEraser);
+                         console.log("Two-finger eraser tap action completed.");
+
+                          // Reset flags after the tap action
+                         isMultiTouchGestureActive = false; // Gesture finished
+                         initialPinchDistance = 0;
+                         initialPinchScale = 1;
+                         delayedTouchStartData = null; // Clear stored data
+
                      } else {
-                         // If the number of touches is no longer 2, the timer is irrelevant
-                          console.log("Two-finger timer expired, but touch count is no longer 2.");
-                          isMultiTouchGestureActive = false; // Reset flag as the intended gesture was likely aborted
+                          console.log("Two-finger gesture: Neither zoom nor erase tap confirmed after delay.");
+                          // If it wasn't a zoom or close tap after the delay, reset flags
+                          isMultiTouchGestureActive = false; // Gesture finished without recognition
                           initialPinchDistance = 0;
                           initialPinchScale = 1;
+                          delayedTouchStartData = null; // Clear stored data
                      }
-                 }, gestureDetectionDelay); // Set the timeout duration
-             }
-            return; // Consume the touchstart event if 2 fingers are detected
+                 } else {
+                     // If the number of touches is no longer 2, the timer is irrelevant
+                      console.log("Two-finger timer expired, but touch count is no longer 2. Action cancelled.");
+                      // Reset flags as the intended gesture was likely aborted
+                      isMultiTouchGestureActive = false;
+                      initialPinchDistance = 0;
+                      initialPinchScale = 1;
+                      delayedTouchStartData = null; // Clear stored data
+                 }
+                  twoFingerGestureTimer = null; // Timer finished
+             }, gestureDetectionDelay); // Set the timeout duration
+
+             delayedTouchStartData.initialPinchDistance = initialPinchDistance; // Ensure the initial distance is stored in the delay data
+             delayedTouchStartData.initialPinchScale = initialPinchScale; // Ensure the initial scale is stored
+
+             return; // Consume the touchstart event
         }
         // --- End Two-Finger Gesture Start ---
 
 
-        // --- Handle Single Touch (Delayed) ---
+        // --- Handle Single Touch Start (Delayed Recognition) ---
         // If exactly 1 finger is down *initially*, start a timer before allowing drawing/shaping.
-        if (e.touches.length === 1) {
-            e.preventDefault(); // Prevent default behavior initially for single touch
-             // Only start the timer if no multi-touch gesture is currently considered active
-             if (!isMultiTouchGestureActive) {
-                 console.log("Single touch detected. Starting timer to confirm.");
-                 // Store necessary data to start drawing later
-                 delayedTouchStartData = {
-                     canvas: canvas,
-                     page: page,
-                     touch: e.touches[0],
-                     tool: currentTool,
-                     color: currentColor,
-                     size: currentSize,
-                     canvasState: page.ctx.getImageData(0, 0, canvas.width, canvas.height) // Save state before potential drawing
-                 };
+        if (e.touches.length === 1 && !isMultiTouchGestureActive) { // Ensure no multi-touch gesture is active
+             console.log("Single touch detected. Starting timer to confirm.");
+             // Store necessary data to start drawing later
+             delayedTouchStartData = {
+                 canvas: canvas,
+                 page: page,
+                 touch: e.touches[0],
+                 tool: currentTool,
+                 color: currentColor,
+                 size: currentSize,
+                 canvasState: page.ctx.getImageData(0, 0, canvas.width, canvas.height) // Save state before potential drawing
+             };
 
-                 singleTouchTimer = setTimeout(() => {
-                     // This function runs if only 1 finger is *still* down after the delay
-                     if (e.touches.length === 1 && delayedTouchStartData) {
-                          console.log("Single touch confirmed. Starting drawing/shaping.");
-                          const data = delayedTouchStartData;
+             singleTouchTimer = setTimeout(() => {
+                 // This function runs if only 1 finger is *still* down after the delay
+                 if (e.touches.length === 1 && delayedTouchStartData && !isMultiTouchGestureActive) { // Re-check touch count and multi-touch flag
+                      console.log("Single touch confirmed. Starting drawing/shaping.");
+                      const data = delayedTouchStartData;
 
-                         isDrawing = true; // Activate drawing flag
+                     // Check if the tool is pan - if so, activate button pan instead of drawing
+                     if (data.tool === 'pan') {
+                          isPanning = true; // Activate button pan flag
+                          const touch = e.touches[0]; // Use current touch position
+                          const rect = canvas.getBoundingClientRect();
+                          panStartX = touch.clientX - rect.left - data.page.translateX;
+                          panStartY = touch.clientY - rect.top - data.page.translateY;
+                          canvas.classList.add("active"); // grabbing cursor
+                          console.log("Single-touch button pan started after delay.");
+                     } else {
+                          isDrawing = true; // Activate drawing flag for other tools
 
-                         const pos = getMousePos(data.canvas, data.touch, data.page.scale, data.page.translateX, data.page.translateY);
+                         const pos = getMousePos(data.canvas, data.touch, data.page.scale, data.page.translateX, data.page.translateY); // Use the initial touch position
+
+                         // Set lastX, lastY for initial point for drawing tools
                          [lastX, lastY] = [pos.x, pos.y];
                          drawStartX = pos.x;
                          drawStartY = pos.y;
@@ -274,20 +307,22 @@ document.addEventListener('DOMContentLoaded', () => {
                              }
                          }
                          // For shapes/tables, isDrawing is enough; the actual drawing starts in touchmove/touchend.
+                     }
+
 
                          delayedTouchStartData = null; // Clear stored data after use
 
+
                      } else {
-                         // If the number of touches is no longer 1, the single touch action is cancelled.
-                          console.log("Single touch timer expired, but touch count is no longer 1. Action cancelled.");
+                         // If the number of touches is no longer 1 or multi-touch is now active, the single touch action is cancelled.
+                          console.log("Single touch timer expired, but touch count is not 1 or multi-touch active. Action cancelled.");
                           delayedTouchStartData = null; // Clear stored data
-                          // No drawing or shaping action was started.
+                          // No drawing or shaping action was started by this timer.
                      }
+                     singleTouchTimer = null; // Timer finished
                  }, gestureDetectionDelay); // Set the timeout duration
 
-             }
-            // Do not return here immediately. Let it check for other conditions if needed,
-            // although with the multi-touch checks above, this part should only run for 1 finger.
+             return; // Consume the touchstart event
         }
         // --- End Single Touch Handling ---
 
@@ -297,7 +332,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const handleTouchMove = (e) => {
         // Prevent default ONLY if a specific, handled gesture is currently active and the touch count is relevant.
-        // This allows natural scrolling for unhandled touch actions.
+        // This allows natural scrolling for unhandled touch actions outside of the canvas.
+        // Note: canvas.style.touchAction = 'none' also prevents default browser scroll/zoom on the canvas element itself.
         // e.preventDefault(); // Removed global preventDefault
 
         const canvas = e.target;
@@ -312,62 +348,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- Handle Active Gestures ---
 
-        // If multi-touch gesture flag is active, check specific multi-touch gestures first.
-        if (isMultiTouchGestureActive) {
-
-            // --- Four-Finger Eraser Move ---
-            // Only continue 4-finger erase if isDrawing is true AND current tool is eraser AND exactly 4 fingers are down.
-            if (isDrawing && currentTool === 'eraser' && e.touches.length === 4) {
-                 e.preventDefault(); // Prevent default browser behavior for erasing
-                 const touch = e.touches[0]; // Use the first touch for erasing
-                 const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
-                 ctx.lineTo(pos.x, pos.y);
-                 ctx.stroke();
-                 [lastX, lastY] = [pos.x, pos.y];
-                 return; // Consume the touchmove event
-            }
-             // --- End Four-Finger Eraser Move ---
-
-
-            // --- Three-Finger Pan Move ---
-            // Only continue 3-finger pan if the flag is active AND exactly 3 fingers are down.
-            if (isThreeFingerPanning && e.touches.length === 3) {
-                 e.preventDefault(); // Prevent default browser behavior for panning
-                 const touch = e.touches[0]; // Use the first touch for calculating movement
-                 const rect = canvas.getBoundingClientRect();
-                 page.translateX = (touch.clientX - rect.left) - panStartX;
-                 page.translateY = (touch.clientY - rect.top) - panStartY;
-                 applyTransform(page); // Update visual position
-                 return; // Consume the touchmove event
-            }
-            // --- End Three-Finger Pan Move ---
-
-            // --- Two-Finger Zoom Move ---
-            // Only continue 2-finger zoom if initial pinch distance was set (meaning a zoom gesture started AFTER the timer) AND exactly 2 fingers are down.
-            // Also ensure the 2-finger timer has finished or is not active, because movement during the timer is used to DIFFERENTIATE.
-            if (initialPinchDistance > 0 && e.touches.length === 2 && twoFingerGestureTimer === null) {
-                 e.preventDefault(); // Prevent default browser zoom
-                 const currentPinchDistance = getDistanceBetweenTouches(e.touches[0], e.touches[1]);
-                 const distanceChange = Math.abs(currentPinchDistance - initialPinchDistance);
-
-                 // Only zoom if the distance change exceeds the threshold (already checked in timer, but good to reinforce)
-                 if (distanceChange > minZoomDistanceThreshold) {
-                      let newScale = initialPinchScale * (currentPinchDistance / initialPinchDistance);
-                      newScale = Math.max(0.2, Math.min(newScale, 5)); // Clamp scale
-                      page.scale = newScale;
-                      applyTransform(page); // Apply the new scale
-                      // console.log("Two-finger pinch/zoom active. Scale:", newScale);
-                 }
-                 return; // Consume the touchmove event
-            }
-            // --- End Two-Finger Zoom Move ---
-
-            // If isMultiTouchGestureActive is true, but none of the specific multi-touch moves matched,
-            // it might be an invalid state or transition. Do not proceed with single-touch moves.
-            // The touchstart logic with timers should handle transitions better.
-            // If fingers are lifted during multi-touch, touchend handles it.
-            return; // Consume the event if multi-touch was active but no specific move handled.
+        // --- Four-Finger Eraser Move ---
+        // Only continue 4-finger erase if isDrawing is true AND current tool is eraser AND exactly 4 fingers are down.
+        // isDrawing is set in touchstart when the 4-finger gesture is recognized.
+        if (isDrawing && currentTool === 'eraser' && e.touches.length === 4) {
+             e.preventDefault(); // Prevent default browser behavior for erasing
+             const touch = e.touches[0]; // Use the first touch for erasing
+             const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
+             ctx.lineTo(pos.x, pos.y);
+             ctx.stroke();
+             [lastX, lastY] = [pos.x, pos.y];
+             return; // Consume the touchmove event
         }
+         // --- End Four-Finger Eraser Move ---
+
+
+        // --- Three-Finger Pan Move ---
+        // Only continue 3-finger pan if the flag is active AND exactly 3 fingers are down.
+        // isThreeFingerPanning is set in touchstart when the 3-finger gesture is recognized.
+        if (isThreeFingerPanning && e.touches.length === 3) {
+             e.preventDefault(); // Prevent default browser behavior for panning
+             const touch = e.touches[0]; // Use the first touch for calculating movement
+             const rect = canvas.getBoundingClientRect();
+             page.translateX = (touch.clientX - rect.left) - panStartX;
+             page.translateY = (touch.clientY - rect.top) - panStartY;
+             applyTransform(page); // Update visual position
+             return; // Consume the touchmove event
+        }
+        // --- End Three-Finger Pan Move ---
+
+        // --- Two-Finger Zoom Move (After Timer or Immediate Significant Movement) ---
+        // Only continue 2-finger zoom if isMultiTouchGestureActive is true AND exactly 2 fingers are down.
+        // We also need to check if the zoom was *confirmed* (either by the timer or by significant movement).
+        // If twoFingerGestureTimer is still active, movement might *confirm* the zoom.
+        if (isMultiTouchGestureActive && e.touches.length === 2) {
+             const currentPinchDistance = getDistanceBetweenTouches(e.touches[0], e.touches[1]);
+             const distanceChange = Math.abs(currentPinchDistance - initialPinchDistance);
+
+             // Check if zoom should start now based on significant movement while the timer is active
+             if (twoFingerGestureTimer !== null && distanceChange > minZoomDistanceThreshold) {
+                  console.log("Two-finger gesture confirmed as Zoom (via movement during timer).");
+                  clearTimeout(twoFingerGestureTimer);
+                  twoFingerGestureTimer = null; // Timer finished, zoom confirmed
+
+                  // Proceed with zoom logic below
+             }
+
+             // If zoom was confirmed (timer is null and initialPinchDistance > 0 indicates start)
+             if (twoFingerGestureTimer === null && initialPinchDistance > 0) {
+                 e.preventDefault(); // Prevent default browser zoom
+                 let newScale = initialPinchScale * (currentPinchDistance / initialPinchDistance);
+                 newScale = Math.max(0.2, Math.min(newScale, 5)); // Clamp scale
+                 page.scale = newScale;
+                 applyTransform(page); // Apply the new scale
+                 // console.log("Two-finger pinch/zoom active. Scale:", newScale);
+                 return; // Consume the touchmove event
+             }
+             // If the timer is still active and movement is not enough for zoom, do nothing yet.
+             // If the timer finished as an erase tap, isMultiTouchGestureActive would be false already.
+        }
+        // --- End Two-Finger Zoom Move ---
 
 
         // --- Handle Single Touch Drawing/Shaping or Button Pan Move ---
@@ -379,56 +419,9 @@ document.addEventListener('DOMContentLoaded', () => {
              const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
 
              // If a single touch timer was active, significant movement might cancel it and start drawing immediately.
-             // Check if the timer is still active and if movement exceeds a small tap threshold.
-             if (singleTouchTimer !== null) {
-                  const startTouch = delayedTouchStartData ? delayedTouchStartData.touch : e.touches[0]; // Use the stored start touch if available
-                  const currentTouch = e.touches[0];
-                  const distanceMoved = getDistanceBetweenTouches(startTouch, currentTouch);
-
-                  if (distanceMoved > 5) { // Small threshold, adjust as needed
-                      console.log("Significant single-touch movement during delay. Cancelling timer and starting drawing.");
-                      clearTimeout(singleTouchTimer);
-                      singleTouchTimer = null;
-
-                      // Manually start drawing/shaping since the timer is cancelled
-                      if (delayedTouchStartData) {
-                           const data = delayedTouchStartData;
-                           isDrawing = true; // Activate drawing flag
-
-                           const pos = getMousePos(data.canvas, data.touch, data.page.scale, data.page.translateX, data.page.translateY);
-                           [lastX, lastY] = [pos.x, pos.y];
-                           drawStartX = pos.x;
-                           drawStartY = pos.y;
-
-                           if (data.canvasState) {
-                                data.page.ctx.putImageData(data.canvasState, 0, 0);
-                           }
-                           savedCanvasState = data.canvasState;
-
-                           if (data.tool === 'table') {
-                               const rows = parseInt(document.getElementById('table-rows').value);
-                               const cols = parseInt(document.getElementById('table-cols').value);
-                                data.page.tableInfo = { startX: drawStartX, startY: drawStartY, rows: rows, cols: cols };
-                           }
-                           if (data.tool === 'pen' || data.tool === 'eraser' || data.tool === 'highlight') {
-                                data.page.ctx.beginPath();
-                                if (data.tool === 'highlight') highlightPoints = [{ x: pos.x, y: pos.y }];
-                                else if (data.tool === 'pen') penPoints = [{ x: pos.x, y: pos.y }];
-                                data.page.ctx.lineWidth = data.size;
-                                data.page.ctx.strokeStyle = data.color;
-                                data.page.ctx.globalAlpha = 1.0;
-                                if (data.tool === 'eraser') data.page.ctx.globalCompositeOperation = 'destination-out';
-                                else if (data.tool === 'highlight') { data.page.ctx.globalAlpha = 0.5; data.page.ctx.lineWidth = data.size * 5; }
-                                else if (data.tool === 'pen') data.page.ctx.globalAlpha = 1.0;
-
-                                if (data.tool === 'eraser' || data.tool === 'pen' || data.tool === 'highlight') {
-                                     data.page.ctx.moveTo(lastX, lastY); // Start path
-                                }
-                           }
-                           delayedTouchStartData = null; // Clear stored data
-                      }
-                  }
-             }
+             // This check was primarily in touchstart's timer callback, but a move right after touchstart could also trigger it.
+             // The logic in touchstart sets isDrawing=true *after* the timer for single touch,
+             // so if isDrawing is true here and touches.length is 1 and no multi-touch, it's a confirmed single touch move.
 
 
              if (isDrawing) { // This covers pen, highlight, eraser, shapes, table previews (after delay or immediate start)
@@ -539,10 +532,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY); // Position of one of the ending touches
 
 
-        // --- Handle Ending Gestures (Check flags first, then remaining touch count) ---
+        // --- Handle Ending Gestures ---
 
-        // --- Handle Delayed Single Touch End (as a Tap) ---
-        // If the single touch timer is still active when touches drop to 0, it was a tap.
+        // --- Handle Delayed Single Touch End (as a Tap if timer active and fingers lift to 0) ---
+        // If the single touch timer is still active AND total touches drop to 0, it's a tap.
         if (singleTouchTimer !== null && e.touches.length === 0) {
              e.preventDefault(); // Prevent default tap behavior
              console.log("Single touch tap confirmed after delay.");
@@ -550,112 +543,107 @@ document.addEventListener('DOMContentLoaded', () => {
              singleTouchTimer = null;
              delayedTouchStartData = null; // Clear stored data
 
-             // Execute a tap action based on the original tool
-             if (savedCanvasState) { // Restore canvas state before drawing the tap
+             // Execute a tap action based on the original tool (stored in delayedTouchStartData or currentTool if timer finished)
+             const tapTool = delayedTouchStartData ? delayedTouchStartData.tool : currentTool;
+
+             // Restore canvas state before drawing the tap if saved
+             if (savedCanvasState) {
                  ctx.putImageData(savedCanvasState, 0, 0);
                  savedCanvasState = null;
              }
 
               // Execute tap action for Pen or Highlight (draw a dot)
-             if (currentTool === 'pen' || currentTool === 'highlight') {
-                 ctx.strokeStyle = currentColor;
-                 ctx.fillStyle = currentColor; // Use stroke color for fill for dot
+             if (tapTool === 'pen' || tapTool === 'highlight') {
+                 ctx.strokeStyle = currentColor; // Use current color/size for the tap
+                 ctx.fillStyle = currentColor;
                  ctx.globalCompositeOperation = 'source-over';
-                 ctx.globalAlpha = (currentTool === 'highlight') ? 0.5 : 1.0;
-                 ctx.lineWidth = (currentTool === 'highlight') ? currentSize * 5 : currentSize;
-
+                 ctx.globalAlpha = (tapTool === 'highlight') ? 0.5 : 1.0;
+                 ctx.lineWidth = (tapTool === 'highlight') ? currentSize * 5 : currentSize;
 
                  ctx.beginPath();
-                 // Draw a small circle at the tap position
+                 // Draw a small circle at the tap position (use pos from the touch that ended)
                  ctx.arc(pos.x, pos.y, ctx.lineWidth / 2, 0, Math.PI * 2);
-                 ctx.fill(); // Fill the circle to make a dot
+                 ctx.fill();
 
                  saveToHistory(pageIndex); // Save the dot
-             } else if (currentTool === 'eraser') {
+             } else if (tapTool === 'eraser') {
                  // For eraser tap, perform a small erase at the tap location
                  ctx.globalCompositeOperation = 'destination-out';
                  ctx.lineWidth = currentSize * 1.5; // Eraser size
 
                  ctx.beginPath();
                  ctx.arc(pos.x, pos.y, ctx.lineWidth / 2, 0, Math.PI * 2); // Draw a small circle to erase
-                 ctx.fill(); // Fill the circle
+                 ctx.fill();
 
                  ctx.globalCompositeOperation = 'source-over'; // Reset composite mode
 
                  saveToHistory(pageIndex); // Save the erase action
 
              }
-             // For shapes/table tap, usually no action unless specifically implemented (e.g., select).
-             // The current code doesn't have tap actions for shapes/table, so do nothing for them.
+             // For shapes/table tap, usually no action unless specifically implemented.
 
 
-             isDrawing = false; // No continuous drawing started
+             isDrawing = false; // No continuous drawing started by this tap
               // Multi-touch flag will be reset when touches length is 0 later.
              // Redo stack cleared later if needed.
          }
          // --- End Delayed Single Touch End ---
 
 
-        // --- Handle Delayed Two-Finger Gesture End (as Eraser Tap if timer active and fingers lift) ---
-        // If the two-finger timer is still active AND touches drop to 0 (meaning both fingers lifted quickly)
+        // --- Handle Delayed Two-Finger Gesture End (as Eraser Tap or cancelled Zoom if timer active and fingers lift to 0) ---
+        // If the two-finger timer is still active AND total touches drop to 0 (meaning both fingers lifted quickly)
         if (twoFingerGestureTimer !== null && e.touches.length === 0) {
              e.preventDefault(); // Prevent default behavior
-             console.log("Two-finger timer active, fingers lifted. Checking for eraser tap.");
+             console.log("Two-finger timer active, fingers lifted to 0.");
              clearTimeout(twoFingerGestureTimer);
              twoFingerGestureTimer = null;
 
-             // Check the initial distance between the fingers when touchstart occurred
-             // (This requires storing initial touch positions in handleTouchStart if needed here,
-             // but for now we rely on the timer logic determining erase vs zoom).
-             // Based on the timer logic, if the timer finished and it wasn't a zoom, it was an erase tap attempt.
-             // Here, if the timer was still active when touches dropped to 0, it means the fingers lifted
-             // *before* the timer finished or right as it finished without significant movement.
-             // Let's assume lifting 2 fingers quickly *while the timer is active* is intended as an erase tap.
-
-             // Simulate a quick erase action at the center point of the two lifted fingers if initial distance was small.
-             // We need the positions of the two fingers that lifted. e.changedTouches might have both if they lifted simultaneously.
+             // If initial distance was small and both original touches lifted (check e.changedTouches), it's an eraser tap.
              if (e.changedTouches.length === 2 && getDistanceBetweenTouches(e.changedTouches[0], e.changedTouches[1]) < minEraserTapDistanceThreshold) {
                  console.log("Two-finger quick lift confirmed as Eraser Tap.");
-                  toolBeforeFourFingerEraser = currentTool; // Save current tool
-                  setActiveTool("eraser"); // Temporarily switch to eraser
+                  const tapToolBefore = delayedTouchStartData ? delayedTouchStartData.toolBeforeGesture : currentTool; // Use stored tool or current
+                 toolBeforeFourFingerEraser = tapToolBefore; // Set this for the potential setActiveTool call
+                 setActiveTool("eraser"); // Temporarily switch to eraser
 
-                  const touch1 = e.changedTouches[0];
+                  const touch1 = e.changedTouches[0]; // Use lifted touch positions
                   const touch2 = e.changedTouches[1];
                   const centerX = (touch1.clientX + touch2.clientX) / 2;
                   const centerY = (touch1.clientY + touch2.clientY) / 2;
                   const canvasRect = canvas.getBoundingClientRect();
-                  const pos = getMousePos(canvas, { clientX: centerX - canvasRect.left, clientY: centerY - canvasRect.top }, page.scale, page.translateX, page.translateY);
+                  const tapPos = getMousePos(canvas, { clientX: centerX - canvasRect.left, clientY: centerY - canvasRect.top }, page.scale, page.translateX, page.translateY);
 
                   page.ctx.globalCompositeOperation = 'destination-out';
                   page.ctx.lineWidth = currentSize * 1.5; // Eraser size
 
                   page.ctx.beginPath();
-                  page.ctx.arc(pos.x, pos.y, page.ctx.lineWidth / 2, 0, Math.PI * 2); // Draw a small circle to erase
-                  page.ctx.fill(); // Fill the circle
+                  page.ctx.arc(tapPos.x, tapPos.y, page.ctx.lineWidth / 2, 0, Math.PI * 2); // Draw a small circle to erase
+                  page.ctx.fill();
 
                   page.ctx.globalCompositeOperation = 'source-over'; // Reset composite mode
 
                   saveToHistory(pageIndex); // Save the erase action
-                  // Revert tool immediately after the action for a tap
+                  // Revert tool immediately after the action
                   setActiveTool(toolBeforeFourFingerEraser);
                   console.log("Two-finger eraser tap action completed.");
                   // Reset flags after the tap action
-                 isMultiTouchGestureActive = false;
+                 isMultiTouchGestureActive = false; // Gesture finished
                  initialPinchDistance = 0;
                  initialPinchScale = 1;
+                 delayedTouchStartData = null;
 
              } else {
-                  console.log("Two-finger quick lift: Not an eraser tap based on distance or number of lifted touches.");
-                  // Reset flags if it wasn't an erase tap
-                  isMultiTouchGestureActive = false;
+                  console.log("Two-finger quick lift: Not an eraser tap or zoom. Gesture cancelled.");
+                  // Reset flags if it wasn't an erase tap or confirmed zoom
+                  isMultiTouchGestureActive = false; // Gesture finished without recognition
                   initialPinchDistance = 0;
                   initialPinchScale = 1;
+                  delayedTouchStartData = null;
              }
 
-             isDrawing = false; // No continuous drawing
-             // Redo stack cleared later if needed.
+             isDrawing = false; // No continuous drawing started
+              // Redo stack cleared later if needed.
          }
-         // --- End Delayed Two-Finger Gesture End ---
+          // --- End Delayed Two-Finger Gesture End ---
 
 
         // --- Handle Ending Multi-Touch Gestures (started immediately or after timer) ---
@@ -692,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
          // --- Two-Finger Zoom End ---
          // Check if a zoom gesture was active (initialPinchDistance > 0) AND the number of active touches has dropped below 2.
-         // Also ensure the 2-finger timer is NOT active, meaning zoom was confirmed via timer or movement.
+         // Also ensure the 2-finger timer is NOT active (meaning zoom was confirmed).
          if (initialPinchDistance > 0 && e.touches.length < 2 && twoFingerGestureTimer === null) {
              e.preventDefault(); // Prevent default browser behavior when fingers lift
              console.log("Two-finger pinch/zoom ended.");
@@ -720,10 +708,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- Handle Single Touch Drawing/Shaping or Button Pan End (when total touches is 0) ---
         // This block runs if a single-touch action is active (isDrawing or isPanning via button)
-        // AND the total number of touches drops to 0 (meaning all fingers are lifted).
-        // Also ensure no multi-touch gestures were active when fingers lifted to 0.
-         if ((isDrawing || (isPanning && currentTool === 'pan')) && e.touches.length === 0 && !isMultiTouchGestureActive) {
-             e.preventDefault(); // Prevent default for finalizing the action
+        // AND the total number of touches drops to 0.
+        // Ensure no multi-touch gestures were active when fingers lifted to 0, unless they just ended above.
+         if ((isDrawing || (isPanning && currentTool === 'pan')) && e.touches.length === 0) {
+             // Prevent default only if drawing/pan was active and all touches are lifted.
+             e.preventDefault();
 
              if (isPanning && currentTool === 'pan') {
                   // Finalize button-activated single-touch pan
@@ -766,7 +755,7 @@ document.addEventListener('DOMContentLoaded', () => {
                           ctx.stroke();
                       } else if (points.length === 1) {
                           // Draw a dot if the timer didn't already handle it as a tap
-                           // This case might be less frequent with the timer, but keep for robustness.
+                          // This case should be less frequent with the singleTouchTimer tap logic.
                           ctx.beginPath();
                           ctx.arc(pos.x, pos.y, ctx.lineWidth / 2, 0, Math.PI * 2); // Draw dot at final pos
                           ctx.fillStyle = ctx.strokeStyle;
@@ -800,8 +789,7 @@ document.addEventListener('DOMContentLoaded', () => {
                       const height = pos.y - drawStartY;
 
                       // Only draw shape/table if there was significant movement (not just a tap)
-                      // The tap case should be handled by the singleTouchTimer logic now.
-                      if (Math.abs(width) > 2 || Math.abs(height) > 2) { // Keep a small threshold just in case
+                      if (Math.abs(width) > 2 || Math.abs(height) > 2) { // Keep a small threshold just in case timer logic didn't catch it
                           ctx.beginPath();
                           if (currentTool === 'rect') {
                               ctx.strokeRect(drawStartX, drawStartY, width, height);
@@ -830,7 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
                           if (currentTool === 'table' && page.tableInfo) {
                               delete page.tableInfo;
                           }
-                          // No history save needed for a tap with shape/table tool.
+                          // No history save needed for a tap with shape/table tool unless it was a recognized tap gesture with timer.
                       }
                   }
                   // --- End Existing drawing/shaping touchend logic ---
@@ -857,28 +845,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- Handle Implicit Ends of Multi-Touch Gestures (fingers lifted, but not all) ---
         // If a multi-touch gesture flag is active, but the number of touches drops below the required count,
         // implicitly end that specific multi-touch gesture.
-        if (isMultiTouchGestureActive) {
-             // If 3-finger pan was active, but touches drop below 3 (and it didn't fully end yet), reset its flag.
+        if (isMultiTouchGestureActive && e.touches.length > 0) { // Only check implicit ends if some touches remain
+             // If 3-finger pan was active, but touches drop below 3, reset its flag.
             if (isThreeFingerPanning && e.touches.length < 3) {
                  console.log("Three-finger pan implicitly ended due to finger lift.");
                  isThreeFingerPanning = false;
                  // Do NOT remove canvas 'active' class here, as another gesture might still be active.
                  savedCanvasState = null; // Clear any saved state related to pan start
             }
-             // If 2-finger zoom was active, but touches drop below 2 (and it didn't fully end yet), reset its flags.
-             // Also ensure the 2-finger timer is NOT active, meaning zoom was confirmed via timer or movement.
+             // If 2-finger zoom was active, but touches drop below 2, reset its flags.
+             // Ensure the 2-finger timer is NOT active (meaning zoom was confirmed).
             if (initialPinchDistance > 0 && e.touches.length < 2 && twoFingerGestureTimer === null) {
                  console.log("Two-finger zoom implicitly ended due to finger lift.");
                  initialPinchDistance = 0;
                  initialPinchScale = 1;
             }
              // The 4-finger eraser end is handled explicitly above when tool changes and touch count drops below 4.
-
-            // After checking implicit ends, if no multi-touch gesture is *still* active,
-            // AND the total touches are not 0 (meaning some fingers are still down),
-            // we might need to reset the main multi-touch flag if the user is transitioning to fewer fingers.
-            // However, the touchstart logic on adding fingers should handle starting a *new* gesture.
-            // Let's only reset isMultiTouchGestureActive when total touches hit 0 for simplicity and to allow transitions.
         }
 
 
@@ -887,11 +869,13 @@ document.addEventListener('DOMContentLoaded', () => {
              canvas.classList.remove("active");
          }
 
-         // Ensure all timers are cleared on touch end if they are still running for any reason.
-         // This might be redundant but adds safety.
-         clearTimeout(singleTouchTimer); singleTouchTimer = null;
-         clearTimeout(twoFingerGestureTimer); twoFingerGestureTimer = null;
-         delayedTouchStartData = null;
+         // Ensure any pending timers are cleared if fingers were lifted and they weren't handled explicitly.
+         // This helps prevent unexpected actions if touches end in complex ways.
+         if (e.touches.length === 0) { // If all touches are gone, clear any remaining timers
+              clearTimeout(singleTouchTimer); singleTouchTimer = null;
+              clearTimeout(twoFingerGestureTimer); twoFingerGestureTimer = null;
+              delayedTouchStartData = null;
+         }
 
     };
 
@@ -914,7 +898,7 @@ document.addEventListener('DOMContentLoaded', () => {
         delayedTouchStartData = null; // Clear stored delayed data
 
 
-        // Restore the canvas state to before the touch started if saved (for drawing/shaping)
+        // Restore the canvas state to before the touch started if saved (for drawing/shaping previews)
         if (savedCanvasState) {
            if (page && page.ctx) { // Add null checks
                page.ctx.putImageData(savedCanvasState, 0, 0);
@@ -957,25 +941,14 @@ document.addEventListener('DOMContentLoaded', () => {
      };
 
 
-    // Helper function to calculate the distance between two touch points
-    function getDistanceBetweenTouches(touch1, touch2) {
-        if (!touch1 || !touch2) return 0; // Return 0 if touches are invalid
-        const dx = touch2.clientX - touch1.clientX;
-        const dy = touch2.clientY - touch1.clientY;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
     // Function to get mouse or touch position relative to canvas, considering pan and zoom
     // Keep the existing getMousePos function from Script.js, it should handle both mouse and touch.
     // Ensure the one in Script.js is available globally.
     // function getMousePos(canvas, evt, currentScale, currentTranslateX, currentTranslateY) { ... }
 
 
-    // Now, attach these listeners to all canvases.
-    // Since pages are created dynamically, the best place to add these listeners
-    // is within the `createNewPage` function in Script.js, right after creating the canvas.
-    // However, to make this separate file work, we add a function here that can be called from Script.js
-
+    // --- Function to add touch listeners to a canvas ---
+    // This function should be called from Script.js whenever a new canvas page is created.
     window.addTouchEventListenersToCanvas = function(canvas, pageIndex) {
         if (!canvas) {
             console.error("Cannot add touch event listeners: canvas is null.");
@@ -983,6 +956,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // Check if listeners are already added to avoid duplicates
         if (canvas.dataset.touchListenersAdded) {
+            console.warn(`Touch listeners already added to canvas for page ${pageIndex + 1}. Skipping re-attachment.`);
             return;
         }
 
@@ -992,8 +966,8 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.addEventListener("touchcancel", handleTouchCancel);
 
 
-        // Disable default touch actions like double-tap zoom on the canvas itself
-        // This is important to prevent interference with custom gestures.
+        // Disable default touch actions like double-tap zoom and scroll on the canvas element itself.
+        // This is crucial for custom gesture handling.
         canvas.style.touchAction = 'none'; // Modern standard
         canvas.style.msTouchAction = 'none'; // For Internet Explorer (older spec)
 
@@ -1002,26 +976,20 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
 
-    // Initial attachment: Attach listeners to any canvases that might exist when this script loads.
-    // This is a fallback and might not be sufficient if pages are added dynamically *after* this script runs.
-    // Ensure `initApp` in Script.js explicitly calls `window.addTouchEventListenersToCanvas` for each page
-    // after it is created.
-    // This loop assumes `pages` array is accessible and potentially pre-populated by Script.js
-    // before this DOMContentLoaded listener runs. A more reliable integration requires
-    // calling `addTouchEventListenersToCanvas` from `Script.js` after page creation.
-     if (window.pages) { // Check if the global 'pages' array exists
-        document.querySelectorAll('.page canvas').forEach((canvas, index) => {
-             // Ensure the specific page data exists before attempting to add listeners.
-             if (pages[index]) { // Check for page object existence
-                  window.addTouchEventListenersToCanvas(canvas, index);
-             } else {
-                 // Log a warning if page data is missing during this initial loop.
-                 console.warn(`Page data missing for canvas at index ${index} during initial touch listener attachment. Ensure createNewPage calls addTouchEventListenersToCanvas.`);
-             }
-        });
-     } else {
-         console.warn("Global 'pages' array not found. Initial touch listener attachment skipped. Ensure Script.js loads and initializes pages.");
-     }
-
+    // --- Initial attachment of listeners ---
+    // This loop attempts to attach listeners to any canvases that might exist when this script loads initially.
+    // However, the primary way listeners should be added is by calling `window.addTouchEventListenersToCanvas`
+    // from the `createNewPage` function in Script.js, right after the canvas is created and added to the DOM.
+    document.querySelectorAll('.page canvas').forEach((canvas, index) => {
+         // Ensure the global 'pages' array and the specific page data exist before attempting to add listeners.
+         // This script might load before `initApp` in Script.js has fully populated the `pages` array.
+         if (window.pages && pages[index]) { // Check for pages array and page object existence
+              window.addTouchEventListenersToCanvas(canvas, index);
+         } else {
+             // Log a warning if page data is missing during this initial loop.
+             // This indicates that the integration point in Script.js is the primary method needed.
+             console.warn(`Page data missing for canvas at index ${index} during initial touch listener attachment. Ensure createNewPage in Script.js calls addTouchEventListenersToCanvas.`);
+         }
+    });
 
 });

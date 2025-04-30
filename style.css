@@ -2,6 +2,11 @@
 * {
     box-sizing: border-box;
   }
+.page canvas {
+  /* ... خصائص أخرى موجودة ... */
+  touch-action: none; /* أضف هذا السطر */
+  -ms-touch-action: none; /* لدعم بعض المتصفحات القديمة */
+}
   
   body {
     margin: 0;

@@ -1,6 +1,8 @@
 /**
  * Smart Whiteboard - Touch Events Functionality
- * Handles touch interactions for drawing, highlighting, erasing, and panning, and zooming.
+ * Handles touch interactions for drawing, highlighting, erasing, shapes,
+ * one-finger panning (when pan tool active), two-finger panning (when pan tool inactive),
+ * and two-finger zooming (when pan tool active).
  */
 
 // Ensure this script runs after the main Script.js and can access its variables and functions.
@@ -16,12 +18,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // or simply wait a moment, but a cleaner way is to integrate this into the page creation process.
 
     // Let's define the touch event handlers first
-    let initialPinchDistance = null; // Variable to store the distance between two fingers at the start of a pinch
-    let isZooming = false; // Flag to indicate if the user is currently zooming
+    let initialPinchDistance = null; // Variable to store the distance between two fingers at the start of a pinch-to-zoom
+    let isZooming = false; // Flag to indicate if the user is currently zooming (two fingers, pan tool active)
+
+    // isPanning is already defined in Script.js and used for single-touch pan
+    // We will reuse it for two-finger pan when the pan tool is inactive.
+    // We might need to store the number of touches that started the panning gesture
+    let panStartTouches = 0; // To know if panning started with one or two fingers
 
     const handleTouchStart = (e) => {
-        // Prevent default to avoid scrolling and zooming while drawing/panning
-        // e.preventDefault(); // We will handle preventing default more selectively now
+        // Prevent default scroll/zoom behavior initially, we will handle it
+        e.preventDefault();
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
@@ -29,110 +36,113 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!page || !page.ctx) {
             console.error(`Page object or context not found for touchstart on canvas.`);
+            // Reset any potential active state if page data is missing
+             isDrawing = false;
+             isPanning = false;
+             isZooming = false;
+             initialPinchDistance = null;
+             panStartTouches = 0;
+             canvas.classList.remove("active");
+             savedCanvasState = null;
+             if (currentTool === 'pen') penPoints = [];
+             if (currentTool === 'highlight') highlightPoints = [];
+             if (page && page.tableInfo) delete page.tableInfo;
             return;
         }
 
-        // Handle multi-touch for zooming
-        if (e.touches.length === 2) {
-            e.preventDefault(); // Prevent default zoom/scroll for two touches
-            isZooming = true;
-            // Calculate the distance between the two touch points
-            initialPinchDistance = Math.hypot(
-                e.touches[1].clientX - e.touches[0].clientX,
-                e.touches[1].clientY - e.touches[0].clientY
-            );
-            // Stop any ongoing drawing or panning when starting to zoom
-            isDrawing = false;
-            isPanning = false;
-            canvas.classList.remove("active"); // Remove grabbing cursor
-            savedCanvasState = null; // Clear saved state
-             if (currentTool === 'pen') penPoints = []; // Clear temporary points arrays
-             if (currentTool === 'highlight') highlightPoints = [];
-             if (page.tableInfo) delete page.tableInfo;
-            return; // Don't proceed with drawing/panning logic
-        }
+        // Reset flags at the start of a new touch sequence
+        isDrawing = false;
+        isPanning = false;
+        isZooming = false;
+        initialPinchDistance = null;
+        panStartTouches = 0;
+        canvas.classList.remove("active");
+        savedCanvasState = null; // Clear saved state from previous actions
 
 
-        // Handle single touch for panning
-        if (e.touches.length === 1 && currentTool === 'pan') {
-            e.preventDefault(); // Prevent default scroll for single touch when panning
-            isPanning = true;
+        if (e.touches.length === 1) {
             const touch = e.touches[0];
-            // Calculate pan start relative to the viewport, considering current transform
-            const rect = canvas.getBoundingClientRect();
-            panStartX = touch.clientX - rect.left - page.translateX;
-            panStartY = touch.clientY - rect.top - page.translateY;
+            const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY);
 
-            canvas.classList.add("active"); // grabbing cursor
-            // Stop any ongoing drawing or zooming when starting to pan
-            isDrawing = false;
-            isZooming = false;
-            savedCanvasState = null; // Clear saved state
-            if (currentTool === 'pen') penPoints = []; // Clear temporary points arrays
-            if (currentTool === 'highlight') highlightPoints = [];
-            if (page.tableInfo) delete page.tableInfo;
-            return; // Don't proceed with drawing logic
-        }
+            if (currentTool === 'pan') {
+                // Single touch when pan tool is active -> Panning
+                isPanning = true;
+                panStartTouches = 1;
+                const rect = canvas.getBoundingClientRect();
+                panStartX = touch.clientX - rect.left - page.translateX;
+                panStartY = touch.clientY - rect.top - page.translateY;
+                canvas.classList.add("active"); // grabbing cursor for pan
+            } else {
+                // Single touch when drawing/shape tool is active -> Drawing/Shape
+                isDrawing = true;
+                drawStartX = pos.x;
+                drawStartY = pos.y;
+                savedCanvasState = page.ctx.getImageData(0, 0, canvas.width, canvas.height); // Save state before drawing preview
 
-
-        // Handle single touch for drawing/shaping tools
-        if (e.touches.length === 1 && currentTool !== 'pan' && !isZooming && !isPanning) {
-            e.preventDefault(); // Prevent default scroll for single touch when drawing/shaping
-            isDrawing = true;
-            const touch = e.touches[0];
-            const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY); // Use the adapted getMousePos
-
-            [lastX, lastY] = [pos.x, pos.y];
-            drawStartX = pos.x;
-            drawStartY = pos.y;
-
-            // Save the canvas state before starting any drawing action
-            savedCanvasState = page.ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-             // Add logic for 'table' tool touch start
-            if (currentTool === 'table') {
-                const rows = parseInt(document.getElementById('table-rows').value);
-                const cols = parseInt(document.getElementById('table-cols').value);
-                 page.tableInfo = { startX: drawStartX, startY: drawStartY, rows: rows, cols: cols };
-                 console.log(`Drawing table with ${rows} rows and ${cols} columns on touchstart`);
-            }
-
-
-             // Prepare context for drawing (pen, eraser, highlight)
-            if (currentTool === 'pen' || currentTool === 'eraser' || currentTool === 'highlight') {
-                 page.ctx.beginPath();
-
-                 if (currentTool === 'highlight') {
-                     highlightPoints = [{ x: pos.x, y: pos.y }];
-                 } else if (currentTool === 'pen') {
-                      penPoints = [{ x: pos.x, y: pos.y }];
-                 }
-
-                 page.ctx.lineWidth = currentSize;
-                 page.ctx.strokeStyle = currentColor;
-                 page.ctx.globalAlpha = 1.0;
-
-                if (currentTool === 'eraser') {
-                    page.ctx.globalCompositeOperation = 'destination-out';
-                    page.ctx.lineWidth = currentSize * 1.5;
-                     page.ctx.moveTo(lastX, lastY);
-                } else if (currentTool === 'highlight') {
-                    page.ctx.strokeStyle = currentColor;
-                    page.ctx.globalAlpha = 0.5;
-                    page.ctx.globalCompositeOperation = 'source-over';
-                    page.ctx.lineWidth = currentSize * 5;
-                } else if (currentTool === 'pen') {
-                     page.ctx.globalCompositeOperation = 'source-over';
-                     page.ctx.strokeStyle = currentColor;
-                     page.ctx.lineWidth = currentSize;
-                     page.ctx.globalAlpha = 1.0;
+                // Prepare context for drawing (pen, eraser, highlight) or shape start
+                if (currentTool === 'pen' || currentTool === 'eraser' || currentTool === 'highlight') {
+                     page.ctx.beginPath();
+                     if (currentTool === 'highlight') {
+                         highlightPoints = [{ x: pos.x, y: pos.y }];
+                     } else if (currentTool === 'pen') {
+                          penPoints = [{ x: pos.x, y: pos.y }];
+                     }
+                     // Set styles in mousemove for preview
+                } else if (currentTool === 'table') {
+                     const rows = parseInt(document.getElementById('table-rows').value);
+                     const cols = parseInt(document.getElementById('table-cols').value);
+                     page.tableInfo = { startX: drawStartX, startY: drawStartY, rows: rows, cols: cols };
+                     console.log(`Drawing table with ${rows} rows and ${cols} columns on touchstart`);
                 }
             }
+        } else if (e.touches.length === 2) {
+            // Two touches
+            if (currentTool === 'pan') {
+                // Two touches when pan tool is active -> Zooming
+                isZooming = true;
+                initialPinchDistance = Math.hypot(
+                    e.touches[1].clientX - e.touches[0].clientX,
+                    e.touches[1].clientY - e.touches[0].clientY
+                );
+                // No cursor change needed for zoom, pan cursor is already set if pan tool is active
+            } else {
+                // Two touches when drawing/shape tool is active -> Panning with two fingers
+                isPanning = true;
+                panStartTouches = 2;
+                 // Calculate pan start based on the center of the two touches
+                 const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                 const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                 const rect = canvas.getBoundingClientRect();
+                 panStartX = centerX - rect.left - page.translateX;
+                 panStartY = centerY - rect.top - page.translateY;
+
+                 // Optional: Change cursor for two-finger pan if needed, maybe a different icon?
+                 // canvas.classList.add("active"); // Use same grabbing cursor for now
+            }
+             // Stop any potential drawing that might have been initiated briefly before the second touch
+             isDrawing = false;
+             savedCanvasState = null;
+             if (currentTool === 'pen') penPoints = [];
+             if (currentTool === 'highlight') highlightPoints = [];
+             if (page.tableInfo) delete page.tableInfo;
+
+        } else if (e.touches.length > 2) {
+            // Ignore gestures with more than two touches for now
+             isDrawing = false;
+             isPanning = false;
+             isZooming = false;
+             initialPinchDistance = null;
+             panStartTouches = 0;
+             canvas.classList.remove("active");
+             savedCanvasState = null;
+             if (currentTool === 'pen') penPoints = [];
+             if (currentTool === 'highlight') highlightPoints = [];
+             if (page.tableInfo) delete page.tableInfo;
         }
     };
 
     const handleTouchMove = (e) => {
-        // e.preventDefault(); // Prevent default scrolling - handled selectively now
+        e.preventDefault(); // Prevent default scrolling/zooming
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
@@ -144,9 +154,8 @@ document.addEventListener('DOMContentLoaded', () => {
          }
          const ctx = page.ctx;
 
-         // Handle zooming with two fingers
-         if (isZooming && e.touches.length === 2 && initialPinchDistance !== null) {
-             e.preventDefault(); // Prevent default zoom/scroll for two touches
+         // Handle zooming (two fingers, pan tool active)
+         if (isZooming && e.touches.length === 2 && initialPinchDistance !== null && currentTool === 'pan') {
              const currentPinchDistance = Math.hypot(
                  e.touches[1].clientX - e.touches[0].clientX,
                  e.touches[1].clientY - e.touches[0].clientY
@@ -155,119 +164,152 @@ document.addEventListener('DOMContentLoaded', () => {
              const scaleFactor = currentPinchDistance / initialPinchDistance;
 
              // Apply the scale factor relative to the current scale
-             page.scale = Math.max(0.2, Math.min(5, page.scale * scaleFactor)); // Limit zoom between 0.2x and 5x
+             const newScale = Math.max(0.2, Math.min(5, page.scale * scaleFactor)); // Limit zoom between 0.2x and 5x
 
              // Optional: Adjust translation to zoom towards the center of the pinch
              // This is more complex and requires tracking the center of the two touches
-             // For simplicity, we'll just apply the scale for now.
+             // For simplicity, we'll just apply the scale for now, keeping the existing pan translation.
+             // If you need center zooming, this logic needs significant expansion.
 
-             applyTransform(page); // Update visual scale
+             page.scale = newScale; // Update page scale
+             applyTransform(page); // Apply the updated scale and existing translation
              initialPinchDistance = currentPinchDistance; // Update initial distance for continuous zooming
-             return; // Don't proceed with drawing/panning logic
+             return; // Stop here, handled zoom
          }
 
-
-        if (isPanning && e.touches.length > 0) {
-             e.preventDefault(); // Prevent default scroll for single touch when panning
-            const touch = e.touches[0];
-            const rect = canvas.getBoundingClientRect();
-             // Calculate new translate values based on touch movement relative to pan start
-            page.translateX = (touch.clientX - rect.left) - panStartX;
-            page.translateY = (touch.clientY - rect.top) - panStartY;
-
-            applyTransform(page); // Update visual position
-            return;
-        }
-
-        if (!isDrawing || e.touches.length === 0 || isZooming || isPanning) return; // Only draw if drawing is active and not zooming/panning
-
-
-        const touch = e.touches[0];
-        const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
-
-
-        if (currentTool === 'pen' || currentTool === 'highlight') {
-             const points = currentTool === 'pen' ? penPoints : highlightPoints;
-             points.push({ x: pos.x, y: pos.y });
-
-             if (savedCanvasState) {
-                 ctx.putImageData(savedCanvasState, 0, 0);
-             }
-
-            ctx.strokeStyle = currentColor;
-            ctx.globalCompositeOperation = 'source-over';
-
-            if (currentTool === 'highlight') {
-                 ctx.lineWidth = currentSize * 5;
-                 ctx.globalAlpha = 0.5;
-            } else if (currentTool === 'pen') {
-                 ctx.lineWidth = currentSize;
-                 ctx.globalAlpha = 1.0;
-            }
-
-
-             if (points.length > 1) {
-                 ctx.beginPath();
-                 ctx.moveTo(points[0].x, points[0].y);
-
-                 for (let i = 1; i < points.length; i++) {
-                      const p1 = points[i - 1];
-                      const p2 = points[i];
-                      const midPoint = {
-                          x: (p1.x + p2.x) / 2,
-                          y: (p1.y + p2.y) / 2,
-                      };
-                     ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+         // Handle panning (one finger when pan tool active, OR two fingers when pan tool inactive)
+         if (isPanning && e.touches.length > 0) {
+             let touch;
+             if (panStartTouches === 1 && e.touches.length === 1) {
+                 // Continue single-finger pan
+                 touch = e.touches[0];
+             } else if (panStartTouches === 2 && e.touches.length === 2) {
+                  // Continue two-finger pan, use the center of the touches
+                  touch = {
+                      clientX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                      clientY: (e.touches[0].clientY + e.touches[1].clientY) / 2
+                  };
+             } else {
+                 // Unexpected touch count change during panning, potentially stop panning
+                 // Or just use the first touch as a fallback
+                 console.warn(`Unexpected touch count change during panning (started with ${panStartTouches}, now ${e.touches.length}).`);
+                 if (e.touches.length > 0) {
+                     touch = e.touches[0];
+                 } else {
+                     // No touches left, handle in touchend
+                     return;
                  }
-                ctx.lineTo(pos.x, pos.y);
-                 ctx.stroke();
              }
 
-        } else if (currentTool === 'eraser') {
-             const ctx = page.ctx;
-             ctx.lineTo(pos.x, pos.y);
-             ctx.stroke();
-            [lastX, lastY] = [pos.x, pos.y];
-        }
-        else if (currentTool === 'rect' || currentTool === 'circle' || currentTool === 'line' || currentTool === 'arrow' || currentTool === 'table') {
-           if (savedCanvasState) {
-               ctx.putImageData(savedCanvasState, 0, 0);
-           }
 
-           ctx.strokeStyle = currentColor;
-           ctx.lineWidth = currentSize;
-           ctx.globalAlpha = 1.0;
-           ctx.globalCompositeOperation = 'source-over';
+             const rect = canvas.getBoundingClientRect();
+             // Calculate new translate values based on touch movement relative to pan start
+             page.translateX = (touch.clientX - rect.left) - panStartX;
+             page.translateY = (touch.clientY - rect.top) - panStartY;
 
-           const width = pos.x - drawStartX;
-           const height = pos.y - drawStartY;
+             applyTransform(page); // Apply the updated translation and existing scale
+             return; // Stop here, handled pan
+         }
 
-           ctx.beginPath();
-           if (currentTool === 'rect') {
-               ctx.strokeRect(drawStartX, drawStartY, width, height);
-            } else if (currentTool === 'circle') {
-                const centerX = drawStartX + width / 2;
-                const centerY = drawStartY + height / 2;
-                const radiusX = Math.abs(width / 2);
-                const radiusY = Math.abs(height / 2);
-                ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+         // Handle drawing/shaping (one finger, not pan tool)
+        if (isDrawing && e.touches.length === 1 && currentTool !== 'pan') {
+            const touch = e.touches[0];
+            const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
+
+            if (currentTool === 'pen' || currentTool === 'highlight') {
+                 const points = currentTool === 'pen' ? penPoints : highlightPoints;
+                 points.push({ x: pos.x, y: pos.y });
+
+                 // Restore the canvas to the state before drawing the current stroke preview
+                 if (savedCanvasState) {
+                      ctx.putImageData(savedCanvasState, 0, 0);
+                 }
+
+                 // Set style for preview
+                ctx.strokeStyle = currentColor;
+                ctx.globalCompositeOperation = 'source-over'; // Draw on top
+
+                if (currentTool === 'highlight') {
+                     ctx.lineWidth = currentSize * 5;
+                     ctx.globalAlpha = 0.5; // Semi-transparency for highlight
+                } else if (currentTool === 'pen') { // Set styles for pen preview
+                     ctx.lineWidth = currentSize;
+                     ctx.globalAlpha = 1.0; // Opaque for pen
+                }
+
+
+                 // Draw the path using quadratic curves
+                 if (points.length > 1) {
+                     ctx.beginPath(); // Start a new path for each preview frame
+                     ctx.moveTo(points[0].x, points[0].y);
+
+                     for (let i = 1; i < points.length; i++) {
+                          const p1 = points[i - 1];
+                          const p2 = points[i];
+                          // Calculate midpoint for smoother curve control
+                          const midPoint = {
+                              x: (p1.x + p2.x) / 2,
+                              y: (p1.y + p2.y) / 2,
+                          };
+                         // Draw quadratic curve from the previous point (p1) to the midpoint, with p1 as the control point
+                        ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+                     }
+                     // Draw the last segment to the actual current position for a clean end
+                     ctx.lineTo(pos.x, pos.y);
+                     ctx.stroke();
+                 }
+
+            } else if (currentTool === 'eraser') { // Eraser still uses simple lineTo
+                 const ctx = page.ctx;
+                 ctx.lineTo(pos.x, pos.y);
                  ctx.stroke();
-            } else if (currentTool === 'line') {
-                ctx.moveTo(drawStartX, drawStartY);
-                ctx.lineTo(pos.x, pos.y);
-                 ctx.stroke();
-            } else if (currentTool === 'arrow') {
-                 drawArrow(ctx, drawStartX, drawStartY, pos.x, pos.y);
-            } else if (currentTool === 'table' && page.tableInfo) {
-                 // Draw table preview
-                 drawTable(ctx, page.tableInfo.startX, page.tableInfo.startY, width, height, page.tableInfo.rows, page.tableInfo.cols);
+                [lastX, lastY] = [pos.x, pos.y];
             }
-            ctx.closePath();
+            else if (currentTool === 'rect' || currentTool === 'circle' || currentTool === 'line' || currentTool === 'arrow' || currentTool === 'table') { // Add table here
+              // Draw shape/table preview
+              if (savedCanvasState) {
+                  ctx.putImageData(savedCanvasState, 0, 0);
+              }
+
+              // Set style for preview
+             ctx.strokeStyle = currentColor;
+             ctx.lineWidth = currentSize;
+             ctx.globalAlpha = 1.0;
+             ctx.globalCompositeOperation = 'source-over';
+
+             const width = pos.x - drawStartX;
+             const height = pos.y - drawStartY;
+
+             ctx.beginPath();
+             if (currentTool === 'rect') {
+                 ctx.strokeRect(drawStartX, drawStartY, width, height);
+                } else if (currentTool === 'circle') {
+                    // Approximate circle using ellipse
+                    const centerX = drawStartX + width / 2;
+                    const centerY = drawStartY + height / 2;
+                    const radiusX = Math.abs(width / 2);
+                    const radiusY = Math.abs(height / 2);
+                    ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+                     ctx.stroke();
+                } else if (currentTool === 'line') {
+                    ctx.moveTo(drawStartX, drawStartY);
+                    ctx.lineTo(pos.x, pos.y);
+                     ctx.stroke();
+                } else if (currentTool === 'arrow') { // Add arrow preview
+                     drawArrow(ctx, drawStartX, drawStartY, pos.x, pos.y);
+                }else if (currentTool === 'table') { // Add table drawing preview
+                  if (page.tableInfo) {
+                      drawTable(ctx, page.tableInfo.startX, page.tableInfo.startY, width, height, page.tableInfo.rows, page.tableInfo.cols);
+                  }
+                }
+                ctx.closePath(); // Close path after drawing shape
+            }
         }
+         // If none of the above conditions met (e.g., unexpected touch count during a specific gesture), do nothing.
     };
 
     const handleTouchEnd = (e) => {
-        // e.preventDefault(); // Prevent default behavior - handled selectively now
+        e.preventDefault(); // Prevent default behavior
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
@@ -275,154 +317,145 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!page || !page.ctx || !page.canvas) {
              console.error(`Page object, context, or canvas not found for touchend on canvas.`);
-             savedCanvasState = null;
+             // Reset all flags and states on error
              isDrawing = false;
              isPanning = false;
-             isZooming = false; // Reset zooming flag
-             initialPinchDistance = null; // Reset pinch distance
+             isZooming = false;
+             initialPinchDistance = null;
+             panStartTouches = 0;
              canvas.classList.remove("active");
-             // Clear temporary points arrays in case of error
+             savedCanvasState = null;
              if (currentTool === 'pen') penPoints = [];
              if (currentTool === 'highlight') highlightPoints = [];
              if (page && page.tableInfo) delete page.tableInfo;
              return;
         }
 
-         // Check if any touches are still active. If touches.length is 0, all fingers are lifted.
-         // If touches.length > 0, some fingers are still down (e.g., one finger lifted from a two-finger gesture).
+         // Check if all fingers are lifted
          if (e.touches.length === 0) {
-             // All fingers are lifted, end drawing, panning, or zooming
-             isDrawing = false;
-             isPanning = false;
-             isZooming = false; // Reset zooming flag
-             initialPinchDistance = null; // Reset pinch distance
-             canvas.classList.remove("active"); // Remove grabbing cursor
+             // All fingers lifted, finalize the action that was in progress
 
-             // If drawing was in progress, finalize it
-            if (savedCanvasState) {
-                ctx.putImageData(savedCanvasState, 0, 0); // Restore state before final draw
-                savedCanvasState = null; // Clear saved state
-            }
-
-             // Only save to history if a drawing or shape tool was active before the touch ended
-             // Panning and Zooming transforms are applied directly and don't need history states in the same way
-             if (currentTool !== 'pan' && currentTool !== 'table' && (penPoints.length > 0 || highlightPoints.length > 0 || Math.abs(pos.x - drawStartX) > 2 || Math.abs(pos.y - drawStartY) > 2)) {
+             // Finalize Drawing or Shape creation if it was active
+             if (isDrawing) {
+                  const ctx = page.ctx;
                   const touch = e.changedTouches[0]; // Use the touch that ended for the final position
                   const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
 
+
+                  // Restore the canvas state to before the touch started for drawing/shapes
+                  if (savedCanvasState) {
+                     ctx.putImageData(savedCanvasState, 0, 0);
+                     savedCanvasState = null; // Clear saved state
+                  }
+
+                  // Finalize drawing stroke or shape
                  if (currentTool === 'pen' || currentTool === 'highlight') {
-                     const points = currentTool === 'pen' ? penPoints : highlightPoints;
-                     if (points.length > 0) { // Ensure there are points to draw
-                          ctx.strokeStyle = currentColor;
-                          ctx.globalCompositeOperation = 'source-over';
+                      const points = currentTool === 'pen' ? penPoints : highlightPoints;
+                      if (points.length > 0) { // Ensure there are points to draw
+                           ctx.strokeStyle = currentColor;
+                           ctx.globalCompositeOperation = 'source-over';
 
-                          if (currentTool === 'highlight') {
-                              ctx.lineWidth = currentSize * 5;
-                              ctx.globalAlpha = 0.5;
-                          } else if (currentTool === 'pen') {
-                              ctx.lineWidth = currentSize;
-                              ctx.globalAlpha = 1.0;
-                          }
-
-                           if (points.length > 1) {
-                               ctx.beginPath();
-                               ctx.moveTo(points[0].x, points[0].y);
-                               for (let i = 1; i < points.length; i++) {
-                                    const p1 = points[i - 1];
-                                    const p2 = points[i];
-                                    const midPoint = {
-                                        x: (p1.x + p2.x) / 2,
-                                        y: (p1.y + p2.y) / 2,
-                                    };
-                                   ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
-                               }
-                              ctx.lineTo(pos.x, pos.y);
-                               ctx.stroke();
-                           } else if (points.length === 1) {
-                               // Draw a dot if there's only one point (tap)
-                               ctx.beginPath();
-                               ctx.arc(points[0].x, points[0].y, ctx.lineWidth / 2, 0, Math.PI * 2);
-                               ctx.fillStyle = ctx.strokeStyle;
-                               ctx.fill();
+                           if (currentTool === 'highlight') {
+                               ctx.lineWidth = currentSize * 5;
+                               ctx.globalAlpha = 0.5;
+                           } else if (currentTool === 'pen') {
+                               ctx.lineWidth = currentSize;
+                               ctx.globalAlpha = 1.0;
                            }
-                     }
-                 } else if (currentTool === 'eraser') {
-                      // Eraser logic is already handled in mousemove, no need to redraw here
-                 } else if (currentTool === 'rect' || currentTool === 'circle' || currentTool === 'line' || currentTool === 'arrow' || currentTool === 'table') {
-                      // Shape/Table drawing is handled in mousemove/mouseup, but we should save history here if a shape was drawn
-                      // Check if a shape was actually drawn (movement occurred)
-                      if (Math.abs(pos.x - drawStartX) > 2 || Math.abs(pos.y - drawStartY) > 2) {
-                           // Redraw the final shape/table if needed, or ensure it was drawn in mousemove
-                            ctx.strokeStyle = currentColor;
-                            ctx.lineWidth = currentSize;
-                            ctx.globalAlpha = 1.0;
-                            ctx.globalCompositeOperation = 'source-over';
 
-                           const width = pos.x - drawStartX;
-                           const height = pos.y - drawStartY;
-
-                            ctx.beginPath();
-                            if (currentTool === 'rect') {
-                                ctx.strokeRect(drawStartX, drawStartY, width, height);
-                            } else if (currentTool === 'circle') {
-                               const centerX = drawStartX + width / 2;
-                               const centerY = drawStartY + height / 2;
-                               const radiusX = Math.abs(width / 2);
-                               const radiusY = Math.abs(height / 2);
-                               ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
-                               ctx.stroke();
-                            } else if (currentTool === 'line') {
-                               ctx.moveTo(drawStartX, drawStartY);
+                            if (points.length > 1) {
+                                ctx.beginPath();
+                                ctx.moveTo(points[0].x, points[0].y);
+                                for (let i = 1; i < points.length; i++) {
+                                     const p1 = points[i - 1];
+                                     const p2 = points[i];
+                                     const midPoint = {
+                                         x: (p1.x + p2.x) / 2,
+                                         y: (p1.y + p2.y) / 2,
+                                     };
+                                    ctx.quadraticCurveTo(p1.x, p1.y, midPoint.x, midPoint.y);
+                                }
                                ctx.lineTo(pos.x, pos.y);
-                               ctx.stroke();
-                            } else if (currentTool === 'arrow') {
-                                 drawArrow(ctx, drawStartX, drawStartY, pos.x, pos.y);
-                            } else if (currentTool === 'table' && page.tableInfo) {
-                                 drawTable(ctx, page.tableInfo.startX, page.tableInfo.startY, width, height, page.tableInfo.rows, page.tableInfo.cols);
-                                delete page.tableInfo;
+                                ctx.stroke();
+                            } else if (points.length === 1) {
+                                // Draw a dot if there's only one point (tap)
+                                ctx.beginPath();
+                                ctx.arc(points[0].x, points[0].y, ctx.lineWidth / 2, 0, Math.PI * 2);
+                                ctx.fillStyle = ctx.strokeStyle;
+                                ctx.fill();
                             }
-                            ctx.closePath();
-                      } else {
-                          // If it was just a tap for a shape/table tool, clear temporary table info if it exists
-                          if (currentTool === 'table' && page.tableInfo) {
-                              delete page.tableInfo;
-                          }
                       }
-                 }
+                      // Clear points after finalizing
+                      if (currentTool === 'pen') penPoints = [];
+                      if (currentTool === 'highlight') highlightPoints = [];
 
-                 saveToHistory(pageIndex); // Save state after drawing or adding shape/table
-             }
+                  } else if (currentTool === 'eraser') {
+                       // Eraser path is drawn directly in touchmove, just close the path
+                       ctx.closePath();
+                       // No points array to clear for eraser in this implementation
+                   } else if (currentTool === 'rect' || currentTool === 'circle' || currentTool === 'line' || currentTool === 'arrow' || currentTool === 'table') {
+                       // Draw the final shape/table if movement was significant
+                        if (Math.abs(pos.x - drawStartX) > 2 || Math.abs(pos.y - drawStartY) > 2) {
+                             ctx.strokeStyle = currentColor;
+                             ctx.lineWidth = currentSize;
+                             ctx.globalAlpha = 1.0;
+                             ctx.globalCompositeOperation = 'source-over';
 
-             // Clear temporary points arrays and table info regardless of whether drawing occurred
-             if (currentTool === 'pen') penPoints = [];
-             if (currentTool === 'highlight') highlightPoints = [];
-             if (page.tableInfo) delete page.tableInfo;
+                            const width = pos.x - drawStartX;
+                            const height = pos.y - drawStartY;
 
+                             ctx.beginPath();
+                             if (currentTool === 'rect') {
+                                 ctx.strokeRect(drawStartX, drawStartY, width, height);
+                             } else if (currentTool === 'circle') {
+                                const centerX = drawStartX + width / 2;
+                                const centerY = drawStartY + height / 2;
+                                const radiusX = Math.abs(width / 2);
+                                const radiusY = Math.abs(height / 2);
+                                ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+                                ctx.stroke();
+                             } else if (currentTool === 'line') {
+                                ctx.moveTo(drawStartX, drawStartY);
+                                ctx.lineTo(pos.x, pos.y);
+                                ctx.stroke();
+                             } else if (currentTool === 'arrow') {
+                                  drawArrow(ctx, drawStartX, drawStartY, pos.x, pos.y);
+                             } else if (currentTool === 'table' && page.tableInfo) {
+                                  drawTable(ctx, page.tableInfo.startX, page.tableInfo.startY, width, height, page.tableInfo.rows, page.tableInfo.cols);
+                             }
+                             ctx.closePath();
+                        }
+                       // Clear table info after potential drawing
+                       if (page.tableInfo) delete page.tableInfo;
+                   }
 
-            // Clear redo stack for the current page whenever a new action is performed (drawing or adding shapes/tables)
-            if (currentTool !== 'pan' && currentTool !== 'table') { // Don't clear redo for pan/zoom
+                 // Save state to history after any drawing or shape action
+                 saveToHistory(pageIndex);
+                 // Clear redo stack for the current page after a new drawing/shape action
                  page.redoStack = [];
-            } else if (currentTool === 'table' && (Math.abs(pos.x - drawStartX) > 2 || Math.abs(pos.y - drawStartY) > 2)) {
-                // If a table was actually drawn, clear redo stack
-                 page.redoStack = [];
-            }
+                 updateUndoRedoButtons();
 
+             } // End of isDrawing finalization
 
-             updateUndoRedoButtons();
+             // Panning and Zooming effects are applied directly in touchmove via applyTransform
+             // No extra canvas drawing or history save needed here for pan/zoom.
 
+             // Reset all touch state flags
+             isDrawing = false;
+             isPanning = false;
+             isZooming = false;
+             initialPinchDistance = null;
+             panStartTouches = 0;
+             canvas.classList.remove("active"); // Ensure pan cursor is reset
          } else {
-             // If some touches are still active, it might be a multi-touch gesture that is not yet finished,
-             // or one finger was lifted during a multi-touch action.
-             // We should not end the drawing/panning/zooming state entirely yet.
-             // The logic in touchmove will handle the ongoing gesture.
-             // When the last finger is lifted (touches.length becomes 0), the block above will execute.
+             // If some touches are still active, don't reset everything.
+             // The next touchmove/touchend will handle the ongoing or new gesture.
          }
 
 
-        // Reset composite operation and alpha
+        // Reset composite operation and alpha (Important after drawing/erasing)
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1.0;
-
     };
 
      const handleTouchCancel = (e) => {
@@ -434,33 +467,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!page || !page.ctx) {
              console.error(`Page object or context not found for touchcancel on canvas.`);
-             savedCanvasState = null;
+             // Reset all flags and states on error
              isDrawing = false;
              isPanning = false;
-             isZooming = false; // Reset zooming flag
-             initialPinchDistance = null; // Reset pinch distance
+             isZooming = false;
+             initialPinchDistance = null;
+             panStartTouches = 0;
              canvas.classList.remove("active");
-             // Clear temporary points arrays in case of cancel
+             savedCanvasState = null;
              if (currentTool === 'pen') penPoints = [];
              if (currentTool === 'highlight') highlightPoints = [];
              if (page && page.tableInfo) delete page.tableInfo;
              return;
         }
 
-         // If drawing or panning or zooming was in progress, cancel it
+         // If any action was in progress, cancel it and revert canvas if drawing
         if (isDrawing || isPanning || isZooming) {
-             console.log(`Touch cancelled during ${isDrawing ? 'drawing' : (isPanning ? 'panning' : 'zooming')}. Restoring canvas.`);
+             console.log(`Touch cancelled during ${isDrawing ? 'drawing' : (isPanning ? 'panning' : 'zooming')}. Reverting canvas state if drawing.`);
 
-            // Restore the canvas state to before the touch started (only relevant for drawing/shapes)
-            if (savedCanvasState) {
+            // Restore the canvas state to before the touch started if drawing/shaping was active
+            if (isDrawing && savedCanvasState) {
                page.ctx.putImageData(savedCanvasState, 0, 0);
                savedCanvasState = null;
-            }
+            } else {
+                 // Clear saved state if not drawing (e.g., during shape preview)
+                 savedCanvasState = null;
+             }
 
+             // Reset all touch state flags
              isDrawing = false;
              isPanning = false;
-             isZooming = false; // Reset zooming flag
-             initialPinchDistance = null; // Reset pinch distance
+             isZooming = false;
+             initialPinchDistance = null;
+             panStartTouches = 0;
              canvas.classList.remove("active"); // Remove grabbing cursor
 
              // Clear any temporary points or table info
@@ -468,18 +507,21 @@ document.addEventListener('DOMContentLoaded', () => {
              if (currentTool === 'highlight') highlightPoints = [];
              if (page.tableInfo) delete page.tableInfo;
 
-
-            // No history save on cancel - just revert to the previous state
-            // The state before the touch was saved in touchstart (as savedCanvasState)
-            // and we've just restored it.
+            // No history save on cancel - just revert to the previous state (if drawing)
         }
 
          // Reset composite operation and alpha
          page.ctx.globalCompositeOperation = 'source-over';
          page.ctx.globalAlpha = 1.0;
 
-         updateUndoRedoButtons(); // Update button states as history might have been affected by restore
+         updateUndoRedoButtons(); // Update button states as history might have been affected by revert
      };
+
+
+    // Function to get mouse or touch position relative to canvas, considering pan and zoom
+    // This function should exist in Script.js or be accessible globally
+    // Make sure it's correctly defined and accessible here.
+    // Assuming getMousePos is globally available from Script.js
 
 
     // Now, attach these listeners to all canvases.
@@ -511,9 +553,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // This is a fallback/initial attachment, but the main attachment should be in createNewPage
     document.querySelectorAll('.page canvas').forEach((canvas, index) => {
          // Ensure the page data exists before attempting to add listeners
-         if (pages[index]) {
-              window.addTouchEventListenersToCanvas(canvas, index);
-         }
+         // Add a small delay to ensure pages array is populated if this runs too early
+         setTimeout(() => {
+             if (pages[index]) {
+                  window.addTouchEventListenersToCanvas(canvas, index);
+             } else {
+                 console.warn(`Page data not found for canvas index ${index} during initial touch listener attachment.`);
+             }
+         }, 100); // Small delay
     });
 
 });

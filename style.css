@@ -3,9 +3,8 @@
     box-sizing: border-box;
   }
 .page canvas {
-  /* ... خصائص أخرى موجودة ... */
-  touch-action: none; /* أضف هذا السطر */
-  -ms-touch-action: none; /* لدعم بعض المتصفحات القديمة */
+  touch-action: none; 
+  -ms-touch-action: none; 
 }
   
   body {
@@ -43,8 +42,9 @@
     font-size: 16px;
     border: 1px solid #ccc;
     border-radius: 4px;
-    min-width: 200px;
-  }
+/*  min-width: 200px;*/
+    max-width: 150px;
+      } 
   
   .header button {
     background: none;

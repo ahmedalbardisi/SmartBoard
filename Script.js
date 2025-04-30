@@ -1021,12 +1021,15 @@ function handleKeyShortcuts(e) { // Handles keyboard shortcuts
 
 
 function applyTransform(page) {
-    if (!page || !page.element) return; // Check if page and its element exist
-    // Apply scale and translate transform to the page's container element
+    if (!page || !page.element) return; // التحقق مما إذا كانت الصفحة وعنصرها موجودين
+    // تطبيق تحويل القياس والترجمة على عنصر حاوية الصفحة
+    // ترتيب تطبيق translate ثم scale مهم. الترجمة أولاً، ثم القياس بالنسبة للأصل الجديد.
+    // للتكبير نحو المركز، تحتاج إلى حسابات أكثر تعقيدًا تتضمن مركز حركة الإصبعين.
+    // هذا التنفيذ الحالي يقوم بالقياس بالنسبة للركن العلوي الأيسر للعنصر المترجم.
     page.element.style.transform = `translate(${page.translateX}px, ${page.translateY}px) scale(${page.scale})`;
-    // Note: Applying transform to the .page div, not the canvas itself.
-    // This keeps canvas resolution intact but scales/moves the container.
-    updateZoomPercentageDisplay(); // Update zoom display after transform
+    // ملاحظة: تطبيق التحويل على عنصر الـ div الذي يحمل فئة .page، وليس على الكانفاس نفسه.
+    // هذا يحافظ على دقة الكانفاس ولكنه يقوم بقياس وتحريك الحاوية.
+    updateZoomPercentageDisplay(); // تحديث عرض نسبة التكبير بعد التحويل
 }
 
 

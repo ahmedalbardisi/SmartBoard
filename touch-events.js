@@ -1,6 +1,6 @@
 /**
  * Smart Whiteboard - Touch Events Functionality
- * Handles touch interactions for drawing, highlighting, erasing, and panning/zooming.
+ * Handles touch interactions for drawing, highlighting, erasing, and panning.
  */
 
 // Ensure this script runs after the main Script.js and can access its variables and functions.
@@ -10,15 +10,6 @@
 // Functions like getMousePos, saveToHistory, updateUndoRedoButtons, applyTransform,
 // drawArrow, drawTable are also assumed to be globally available.
 
-// New variables for multi-touch and zooming
-let isZooming = false;
-let initialPinchDistance = 0;
-let initialPinchCenter = { x: 0, y: 0 };
-let initialPanTranslateX = 0;
-let initialPanTranslateY = 0;
-let initialPanScale = 0;
-
-
 document.addEventListener('DOMContentLoaded', () => {
     // It's better to attach touch listeners after pages are created in initApp
     // We can add a function call in Script.js initApp or listen for a custom event
@@ -26,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Let's define the touch event handlers first
     const handleTouchStart = (e) => {
-        // Prevent default to avoid scrolling and zooming while interacting with the canvas
+        // Prevent default to avoid scrolling and zooming while drawing/panning
         e.preventDefault();
 
         const canvas = e.target;
@@ -38,125 +29,72 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const touches = e.touches;
+        // Handle multi-touch for panning (optional, current pan is single-touch mouse based)
+        if (e.touches.length > 1 && currentTool === 'pan') {
+             // Simple multi-touch pan: Use the first touch point for pan start
+             // More advanced multi-touch pan/zoom would track distance/center of touches
+            isPanning = true;
+            const touch = e.touches[0];
+            // Calculate pan start relative to the viewport, considering current transform
+            const rect = canvas.getBoundingClientRect();
+            panStartX = touch.clientX - rect.left - page.translateX;
+            panStartY = touch.clientY - rect.top - page.translateY;
 
-        if (touches.length === 2) {
-            // Two fingers: Check tool for Pan vs Zoom
-            const touch1 = touches[0];
-            const touch2 = touches[1];
-
-            const dist = Math.sqrt(Math.pow(touch2.clientX - touch1.clientX, 2) + Math.pow(touch2.clientY - touch1.clientY, 2));
-            initialPinchDistance = dist;
-            initialPinchCenter = {
-                x: (touch1.clientX + touch2.clientX) / 2,
-                y: (touch1.clientY + touch2.clientY) / 2
-            };
-            initialPanTranslateX = page.translateX;
-            initialPanTranslateY = page.translateY;
-            initialPanScale = page.scale;
+            canvas.classList.add("active"); // grabbing cursor
+            return; // Don't draw when panning
+        }
 
 
-            if (currentTool === 'pan') {
-                // Pan tool active: two fingers for Zoom
-                isZooming = true;
-                isPanning = false; // Ensure pan flag is off
-                 isDrawing = false; // Ensure drawing flag is off
-                 canvas.classList.remove("active"); // Remove pan cursor
-                 savedCanvasState = null; // Clear any saved state from potential drawing start
+        // Handle single touch for drawing/shaping tools
+        if (e.touches.length === 1 && currentTool !== 'pan') {
+            isDrawing = true;
+            const touch = e.touches[0];
+            const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY); // Use the adapted getMousePos
 
-            } else {
-                // Drawing/Shape tool active: two fingers for Pan
-                isPanning = true;
-                isZooming = false; // Ensure zoom flag is off
-                isDrawing = false; // Ensure drawing flag is off
-                 canvas.classList.add("active"); // Add grabbing cursor
-                 savedCanvasState = null; // Clear any saved state from potential drawing start
+            [lastX, lastY] = [pos.x, pos.y];
+            drawStartX = pos.x;
+            drawStartY = pos.y;
 
-                 // Use the average position of the two touches for initial pan start
-                 const centerPos = getMousePos(canvas, { clientX: initialPinchCenter.x, clientY: initialPinchCenter.y }, page.scale, page.translateX, page.translateY);
-                 panStartX = centerPos.x * page.scale - page.translateX; // Calculate pan start relative to the canvas element's current position
-                 panStartY = centerPos.y * page.scale - page.translateY; // Considering the canvas element's bounding client rect offset later.
+            // Save the canvas state before starting any drawing action
+            savedCanvasState = page.ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-                 // A simpler approach for panStartX/Y in multi-touch pan:
-                 // panStartX = initialPinchCenter.x - page.translateX;
-                 // panStartY = initialPinchCenter.y - page.translateY;
-
-
+             // Add logic for 'table' tool touch start
+            if (currentTool === 'table') {
+                const rows = parseInt(document.getElementById('table-rows').value);
+                const cols = parseInt(document.getElementById('table-cols').value);
+                 page.tableInfo = { startX: drawStartX, startY: drawStartY, rows: rows, cols: cols };
+                 console.log(`Drawing table with ${rows} rows and ${cols} columns on touchstart`);
             }
-        } else if (touches.length === 1) {
-            // One finger: Check tool for Pan vs Draw/Shape
-            isZooming = false; // Ensure zoom flag is off
-            isPanning = false; // Ensure pan flag is off
-
-            if (currentTool === 'pan') {
-                // Pan tool active: one finger for Pan
-                isPanning = true;
-                isDrawing = false; // Ensure drawing flag is off
-                canvas.classList.add("active"); // Add grabbing cursor
-                 savedCanvasState = null; // Clear any saved state
-
-                const touch = touches[0];
-                 const rect = canvas.getBoundingClientRect(); // Get canvas position relative to viewport
-                // Calculate pan start relative to the canvas's current transformed position
-                panStartX = touch.clientX - rect.left - page.translateX;
-                panStartY = touch.clientY - rect.top - page.translateY;
 
 
-            } else {
-                // Drawing/Shape tool active: one finger for Draw/Shape
-                isDrawing = true;
-                isPanning = false; // Ensure pan flag is off
-                 canvas.classList.remove("active"); // Remove pan cursor
+             // Prepare context for drawing (pen, eraser, highlight)
+            if (currentTool === 'pen' || currentTool === 'eraser' || currentTool === 'highlight') {
+                 page.ctx.beginPath();
 
+                 if (currentTool === 'highlight') {
+                     highlightPoints = [{ x: pos.x, y: pos.y }];
+                 } else if (currentTool === 'pen') {
+                      penPoints = [{ x: pos.x, y: pos.y }];
+                 }
 
-                const touch = touches[0];
-                const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY); // Use the adapted getMousePos
+                 page.ctx.lineWidth = currentSize;
+                 page.ctx.strokeStyle = currentColor;
+                 page.ctx.globalAlpha = 1.0;
 
-                [lastX, lastY] = [pos.x, pos.y];
-                drawStartX = pos.x;
-                drawStartY = pos.y;
-
-                // Save the canvas state before starting any drawing action
-                savedCanvasState = page.ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-                 // Add logic for 'table' tool touch start
-                if (currentTool === 'table') {
-                    const rows = parseInt(document.getElementById('table-rows').value);
-                    const cols = parseInt(document.getElementById('table-cols').value);
-                     page.tableInfo = { startX: drawStartX, startY: drawStartY, rows: rows, cols: cols };
-                     console.log(`Drawing table with ${rows} rows and ${cols} columns on touchstart`);
-                }
-
-
-                 // Prepare context for drawing (pen, eraser, highlight)
-                if (currentTool === 'pen' || currentTool === 'eraser' || currentTool === 'highlight') {
-                     page.ctx.beginPath();
-
-                     if (currentTool === 'highlight') {
-                         highlightPoints = [{ x: pos.x, y: pos.y }];
-                     } else if (currentTool === 'pen') {
-                          penPoints = [{ x: pos.x, y: pos.y }];
-                     }
-
-                     page.ctx.lineWidth = currentSize;
+                if (currentTool === 'eraser') {
+                    page.ctx.globalCompositeOperation = 'destination-out';
+                    page.ctx.lineWidth = currentSize * 1.5;
+                     page.ctx.moveTo(lastX, lastY);
+                } else if (currentTool === 'highlight') {
+                    page.ctx.strokeStyle = currentColor;
+                    page.ctx.globalAlpha = 0.5;
+                    page.ctx.globalCompositeOperation = 'source-over';
+                    page.ctx.lineWidth = currentSize * 5;
+                } else if (currentTool === 'pen') {
+                     page.ctx.globalCompositeOperation = 'source-over';
                      page.ctx.strokeStyle = currentColor;
+                     page.ctx.lineWidth = currentSize;
                      page.ctx.globalAlpha = 1.0;
-
-                    if (currentTool === 'eraser') {
-                        page.ctx.globalCompositeOperation = 'destination-out';
-                        page.ctx.lineWidth = currentSize * 1.5;
-                         page.ctx.moveTo(lastX, lastY);
-                    } else if (currentTool === 'highlight') {
-                        page.ctx.strokeStyle = currentColor;
-                        page.ctx.globalAlpha = 0.5;
-                        page.ctx.globalCompositeOperation = 'source-over';
-                        page.ctx.lineWidth = currentSize * 5;
-                    } else if (currentTool === 'pen') {
-                         page.ctx.globalCompositeOperation = 'source-over';
-                         page.ctx.strokeStyle = currentColor;
-                         page.ctx.lineWidth = currentSize;
-                         page.ctx.globalAlpha = 1.0;
-                    }
                 }
             }
         }
@@ -174,62 +112,10 @@ document.addEventListener('DOMContentLoaded', () => {
               return;
          }
          const ctx = page.ctx;
-         const touches = e.touches;
 
 
-         if (isZooming && touches.length === 2) {
-             // Two fingers and in zoom mode (Pan tool active)
-             const touch1 = touches[0];
-             const touch2 = touches[1];
-             const currentDist = Math.sqrt(Math.pow(touch2.clientX - touch1.clientX, 2) + Math.pow(touch2.clientY - touch1.clientY, 2));
-
-             if (initialPinchDistance === 0) {
-                 // Handle cases where touchstart might have been missed or only had one touch initially
-                 initialPinchDistance = currentDist;
-                 initialPinchCenter = {
-                    x: (touch1.clientX + touch2.clientX) / 2,
-                    y: (touch1.clientY + touch2.clientY) / 2
-                };
-                initialPanTranslateX = page.translateX;
-                initialPanTranslateY = page.translateY;
-                initialPanScale = page.scale;
-                return; // Avoid zooming immediately on the first move after a potential missed start
-             }
-
-             const scaleChange = currentDist / initialPinchDistance;
-             const newScale = initialPanScale * scaleChange;
-
-             // Clamp scale to reasonable limits
-             page.scale = Math.max(0.2, Math.min(5, newScale));
-
-             // Calculate new translate to zoom towards the pinch center
-             const canvasRect = canvas.getBoundingClientRect();
-             const currentPinchCenter = {
-                 x: (touch1.clientX + touch2.clientX) / 2,
-                 y: (touch1.clientY + touch2.clientY) / 2
-             };
-
-             // Position of the pinch center relative to the canvas's top-left corner in viewport coordinates
-             const centerInCanvasViewportX = currentPinchCenter.x - canvasRect.left;
-             const centerInCanvasViewportY = currentPinchCenter.y - canvasRect.top;
-
-              // Position of the pinch center in the original (unscaled, untranslated) canvas coordinates
-             const centerInCanvasOriginalX = (centerInCanvasViewportX - initialPanTranslateX) / initialPanScale;
-             const centerInCanvasOriginalY = (centerInCanvasViewportY - initialPanTranslateY) / initialPanScale;
-
-
-             // Calculate the new translate values to keep the center point fixed relative to the canvas content
-             page.translateX = currentPinchCenter.x - canvasRect.left - (centerInCanvasOriginalX * page.scale);
-             page.translateY = currentPinchCenter.y - canvasRect.top - (centerInCanvasOriginalY * page.scale);
-
-
-             applyTransform(page); // Apply the new scale and translate
-             return;
-         }
-
-
-        if (isPanning && touches.length > 0) { // Handle both one and two-finger pan here
-            const touch = touches[0]; // Use the first touch for pan calculation
+        if (isPanning && e.touches.length > 0) {
+            const touch = e.touches[0];
             const rect = canvas.getBoundingClientRect();
              // Calculate new translate values based on touch movement relative to pan start
             page.translateX = (touch.clientX - rect.left) - panStartX;
@@ -239,9 +125,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (!isDrawing || touches.length === 0) return; // Only draw if in drawing mode and touches are active
+        if (!isDrawing || e.touches.length === 0) return;
 
-        const touch = touches[0];
+        const touch = e.touches[0];
         const pos = getMousePos(page.canvas, touch, page.scale, page.translateX, page.translateY);
 
 
@@ -284,8 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else if (currentTool === 'eraser') {
              const ctx = page.ctx;
-             ctx.lineTo(pos.x, pos.x); // Should be pos.x, pos.y
-             ctx.lineTo(pos.x, pos.y); // Corrected line
+             ctx.lineTo(pos.x, pos.y);
              ctx.stroke();
             [lastX, lastY] = [pos.x, pos.y];
         }
@@ -335,12 +220,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!page || !page.ctx || !page.canvas) {
              console.error(`Page object, context, or canvas not found for touchend on canvas.`);
-             // Attempt to reset state even in case of error
              savedCanvasState = null;
              isDrawing = false;
              isPanning = false;
-             isZooming = false;
-             initialPinchDistance = 0;
              canvas.classList.remove("active");
              // Clear temporary points arrays in case of error
              if (currentTool === 'pen') penPoints = [];
@@ -349,41 +231,20 @@ document.addEventListener('DOMContentLoaded', () => {
              return;
         }
 
-         // Check the number of active touches remaining
-         const touchesRemaining = e.touches.length;
-
-         if (isZooming && touchesRemaining < 2) {
-              // Zooming ended (at least one of the two fingers was lifted)
-              isZooming = false;
-              initialPinchDistance = 0; // Reset pinch distance
-              savedCanvasState = null; // Clear any saved state
-              // Pan/Zoom transforms are applied live, no separate history save here.
-              console.log(`Zooming ended on page ${pageIndex + 1}`);
-              return; // Exit as zoom handling is complete
+         // Check if the touch that ended was the one being used for drawing/panning
+         // This is important for multi-touch scenarios. For single touch, e.changedTouches[0] is the relevant touch.
+         if (isPanning && e.changedTouches.length === 1) { // Assuming single touch pan
+             isPanning = false;
+             canvas.classList.remove("active");
+              savedCanvasState = null; // Clear any saved state from potential pan start
+              // No history save needed for pan transforms as they are applied directly
+              return;
          }
 
-        if (isPanning && touchesRemaining < ((currentTool === 'pan') ? 1 : 2) ) {
-            // Panning ended:
-            // If Pan tool active: one finger pan ends when touch count < 1 (i.e., 0)
-            // If Draw/Shape tool active: two finger pan ends when touch count < 2 (i.e., 0 or 1)
-             isPanning = false;
-             canvas.classList.remove("active"); // Remove grabbing cursor
-             savedCanvasState = null; // Clear any saved state
-            console.log(`Panning ended on page ${pageIndex + 1}`);
-             return; // Exit as pan handling is complete
-        }
-
-        // If we are still here, it might be the end of a drawing/shaping gesture (one finger, non-pan tool)
-        if (!isDrawing || touchesRemaining > 0) {
-             // If drawing wasn't active, or if there are still touches active (meaning it was part of a multi-touch gesture that is not fully ended yet)
-            // Note: With the new logic, drawing is only active for single touches when tool is not 'pan'.
-            // If a second finger is added during drawing, isDrawing is set to false in touchstart for 2 fingers.
-            // So, if touchesRemaining > 0 here, it's a transition state, not the end of a drawing stroke.
-             console.log("TouchEnd during multi-touch or not in drawing mode.");
+        if (!isDrawing || e.changedTouches.length === 0) {
+            // If drawing wasn't active or no touches ended, just return
             return;
         }
-
-        // Finalize drawing/shaping
         isDrawing = false;
 
         const ctx = page.ctx;
@@ -489,8 +350,6 @@ document.addEventListener('DOMContentLoaded', () => {
                  if (currentTool === 'table' && page.tableInfo) {
                      delete page.tableInfo;
                  }
-                 // If it was a tap with a drawing tool, save a dot if applicable (already handled above for pen/highlight)
-                 // For shapes/eraser, a tap might not result in a visible mark, and that's okay.
              }
          }
 
@@ -501,7 +360,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clear redo stack for the current page whenever a new action is performed
         page.redoStack = [];
         updateUndoRedoButtons();
-        console.log(`Drawing/Shaping ended on page ${pageIndex + 1}`);
     };
 
      const handleTouchCancel = (e) => {
@@ -513,12 +371,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!page || !page.ctx) {
              console.error(`Page object or context not found for touchcancel on canvas.`);
-             // Attempt to reset state even in case of error
              savedCanvasState = null;
              isDrawing = false;
              isPanning = false;
-             isZooming = false;
-             initialPinchDistance = 0;
              canvas.classList.remove("active");
              // Clear temporary points arrays in case of cancel
              if (currentTool === 'pen') penPoints = [];
@@ -527,39 +382,36 @@ document.addEventListener('DOMContentLoaded', () => {
              return;
         }
 
-         console.log(`Touch cancelled on page ${pageIndex + 1}. Restoring canvas.`);
+         // If drawing or panning was in progress, cancel it
+        if (isDrawing || isPanning) {
+             console.log(`Touch cancelled during ${isDrawing ? 'drawing' : 'panning'}. Restoring canvas.`);
 
-        // Restore the canvas state to before the touch started for drawing/shaping
-        if (isDrawing && savedCanvasState) {
-           page.ctx.putImageData(savedCanvasState, 0, 0);
-           savedCanvasState = null;
+            // Restore the canvas state to before the touch started
+            if (savedCanvasState) {
+               page.ctx.putImageData(savedCanvasState, 0, 0);
+               savedCanvasState = null;
+            }
+
+             isDrawing = false;
+             isPanning = false;
+             canvas.classList.remove("active"); // Remove grabbing cursor
+
+             // Clear any temporary points or table info
+             if (currentTool === 'pen') penPoints = [];
+             if (currentTool === 'highlight') highlightPoints = [];
+             if (page.tableInfo) delete page.tableInfo;
+
+
+            // No history save on cancel - just revert to the previous state
+            // The state before the touch was saved in touchstart (as savedCanvasState)
+            // and we've just restored it.
         }
-
-         // Reset all touch state flags
-         isDrawing = false;
-         isPanning = false;
-         isZooming = false;
-         initialPinchDistance = 0;
-
-
-         canvas.classList.remove("active"); // Remove grabbing cursor
-
-
-         // Clear any temporary points or table info
-         if (currentTool === 'pen') penPoints = [];
-         if (currentTool === 'highlight') highlightPoints = [];
-         if (page.tableInfo) delete page.tableInfo;
-
-
-        // No history save on cancel - just revert to the previous state
-        // The state before the touch was saved in touchstart (as savedCanvasState)
-        // and we've just restored it if it was a drawing/shaping action.
 
          // Reset composite operation and alpha
          page.ctx.globalCompositeOperation = 'source-over';
          page.ctx.globalAlpha = 1.0;
 
-         updateUndoRedoButtons(); // Update button states
+         updateUndoRedoButtons(); // Update button states as history might have been affected by restore
      };
 
 

@@ -84,10 +84,16 @@ document.addEventListener('DOMContentLoaded', () => {
                      page.ctx.beginPath();
                      if (currentTool === 'highlight') {
                          highlightPoints = [{ x: pos.x, y: pos.y }];
+                         // Set styles in mousemove for preview
                      } else if (currentTool === 'pen') {
                           penPoints = [{ x: pos.x, y: pos.y }];
-                     }
-                     // Set styles in mousemove for preview
+                          // Set styles in mousemove for preview
+                     } else if (currentTool === 'eraser') { // Use destination-out to erase
+                        page.ctx.globalCompositeOperation = 'destination-out';
+                        page.ctx.lineWidth = currentSize * 1.5; // Example: make eraser slightly bigger
+                        page.ctx.moveTo(lastX, lastY); // **إصلاح: إضافة نقطة بداية للممحاة**
+                    }
+                     // Set common styles (color, alpha) in touchmove based on tool
                 } else if (currentTool === 'table') {
                      const rows = parseInt(document.getElementById('table-rows').value);
                      const cols = parseInt(document.getElementById('table-cols').value);
@@ -178,29 +184,22 @@ document.addEventListener('DOMContentLoaded', () => {
          }
 
          // Handle panning (one finger when pan tool active, OR two fingers when pan tool inactive)
-         if (isPanning && e.touches.length > 0) {
+         // Check if isPanning is true AND there are enough touches matching how panning started
+         if (isPanning && e.touches.length >= 1 && (
+             (panStartTouches === 1 && e.touches.length === 1) ||
+             (panStartTouches === 2 && e.touches.length === 2)
+         )) {
              let touch;
-             if (panStartTouches === 1 && e.touches.length === 1) {
+             if (panStartTouches === 1) {
                  // Continue single-finger pan
                  touch = e.touches[0];
-             } else if (panStartTouches === 2 && e.touches.length === 2) {
+             } else if (panStartTouches === 2) {
                   // Continue two-finger pan, use the center of the touches
                   touch = {
                       clientX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
                       clientY: (e.touches[0].clientY + e.touches[1].clientY) / 2
                   };
-             } else {
-                 // Unexpected touch count change during panning, potentially stop panning
-                 // Or just use the first touch as a fallback
-                 console.warn(`Unexpected touch count change during panning (started with ${panStartTouches}, now ${e.touches.length}).`);
-                 if (e.touches.length > 0) {
-                     touch = e.touches[0];
-                 } else {
-                     // No touches left, handle in touchend
-                     return;
-                 }
-             }
-
+             } // else should not happen due to the outer condition
 
              const rect = canvas.getBoundingClientRect();
              // Calculate new translate values based on touch movement relative to pan start
@@ -404,6 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const width = pos.x - drawStartX;
                             const height = pos.y - drawStartY;
 
+                            // Redraw the shape/table
                              ctx.beginPath();
                              if (currentTool === 'rect') {
                                  ctx.strokeRect(drawStartX, drawStartY, width, height);
@@ -450,6 +450,10 @@ document.addEventListener('DOMContentLoaded', () => {
          } else {
              // If some touches are still active, don't reset everything.
              // The next touchmove/touchend will handle the ongoing or new gesture.
+             // For simplicity in this logic, if touch count changes unexpectedly,
+             // we might effectively stop the current specific action (like zoom)
+             // but keep a general panning flag if touches remain.
+             // The touchend with touches.length === 0 is the main cleanup point.
          }
 
 
@@ -555,12 +559,16 @@ document.addEventListener('DOMContentLoaded', () => {
          // Ensure the page data exists before attempting to add listeners
          // Add a small delay to ensure pages array is populated if this runs too early
          setTimeout(() => {
-             if (pages[index]) {
+             // Check if the page exists in the global pages array before adding listeners
+             // This is important if createNewPage hasn't fully finished for all initial canvases
+             if (pages[index] && pages[index].canvas === canvas) {
                   window.addTouchEventListenersToCanvas(canvas, index);
              } else {
-                 console.warn(`Page data not found for canvas index ${index} during initial touch listener attachment.`);
+                 // This warning might appear if the DOM has canvases but pages array isn't fully synced yet.
+                 // The main listener attachment in createNewPage is more reliable.
+                 console.warn(`Page data for canvas index ${index} not fully available during initial touch listener attachment attempt.`);
              }
-         }, 100); // Small delay
+         }, 100); // Small delay to wait for potential page initialization
     });
 
 });

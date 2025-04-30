@@ -1,11 +1,11 @@
-/* === إعدادات أساسية === */
 * {
     box-sizing: border-box;
   }
-.page canvas {
-  touch-action: none; 
-  -ms-touch-action: none; 
-}
+
+ .page canvas {
+    touch-action: none; 
+    -ms-touch-action: none; 
+ }
   
   body {
     margin: 0;
@@ -1349,14 +1349,14 @@
   }
   
   .page.active-page {
-      border: 2px solid #3550e6; /* مثال: إضافة حدود للصفحة النشطة في منطقة الرسم */
-      box-shadow: 0 0 15px rgba(53, 80, 230, 0.3); /* مثال: إضافة ظل مميز */
+      border: 2px solid #3550e6; 
+      box-shadow: 0 0 15px rgba(53, 80, 230, 0.3);
   }
   
   /* اختياري: إزالة الظل أو الحدود الافتراضية للصفحات غير النشطة إذا كانت تتعارض */
   .page:not(.active-page) {
       border: none;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); /* أعد الظل الافتراضي */
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   }
   button.page-action-btn.delete-page-btn {
     background: none;
@@ -1381,8 +1381,8 @@ button.page-action-btn.delete-page-btn:hover {
   border-radius: 4px;
   margin-top: 10px;
   opacity: 1;
-  height: auto; /* Ensure height is auto when visible */
-  transition: all 0.3s ease-in-out; /* Add transition for smooth show/hide */
+  height: auto; 
+  transition: all 0.3s ease-in-out; 
 }
 
 #table-options.hidden {

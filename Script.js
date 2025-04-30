@@ -811,37 +811,6 @@ function setupCanvasEventListeners(canvas, pageIndex) {
    });
 
 
-   function setupCanvasEventListeners(canvas, pageIndex) {
-    const page = pages[pageIndex]; // Get the page object
-  
-  
-    if (!canvas || !page || !page.ctx) { // Add null checks for canvas and context
-        console.error(`Canvas, page object, or context not found for page index ${pageIndex}. Cannot setup event listeners.`);
-        return;
-    }
-  
-    // Existing mouse event listeners go here...
-  
-    canvas.addEventListener("mousedown", (e) => {
-        // ... existing mousedown logic ...
-    });
-  
-    canvas.addEventListener("mousemove", (e) => {
-        // ... existing mousemove logic ...
-    });
-  
-    canvas.addEventListener("mouseup", (e) => {
-        // ... existing mouseup logic ...
-    });
-  
-    canvas.addEventListener("mouseleave", () => {
-        // ... existing mouseleave logic ...
-    });
-  
-     // Prevent context menu on canvas
-     canvas.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-     });
   
      // ======= الكود الجديد الذي ستضيفه هنا =======
      // Add touch event listeners using the function from touch-events.js
@@ -851,8 +820,6 @@ function setupCanvasEventListeners(canvas, pageIndex) {
          console.error("addTouchEventListenersToCanvas function not found. touch-events.js might not be loaded correctly.");
      }
      // ===========================================
-  }
-
 
 }
 

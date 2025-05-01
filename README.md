@@ -2,7 +2,7 @@
 
 ![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)
 ![GitHub last commit](https://img.shields.io/github/last-commit/ahmedalbardisi/SmartBoard)
-![GitHub stars](https://img.shields.io/github/stars/ahmedalbardisi/SmartBoard/index.html?style=social)
+![GitHub stars](https://img.shields.io/github/stars/ahmedalbardisi/SmartBoard?style=social)
 
 تطبيق سبورة ذكية متكامل للرسم وتدوين الملاحظات بدعم كامل للغة العربية وواجهة مستخدم بديهية.
 

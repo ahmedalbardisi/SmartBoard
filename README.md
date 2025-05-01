@@ -1,6 +1,6 @@
 # السبورة الذكية - Smart Whiteboard 🎨
 
-![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)
+![GitHub license](https://img.shields.io/badge/license-GPL-blue.svg)
 ![GitHub last commit](https://img.shields.io/github/last-commit/ahmedalbardisi/SmartBoard)
 ![GitHub stars](https://img.shields.io/github/stars/ahmedalbardisi/SmartBoard?style=social)
 
@@ -76,7 +76,7 @@ open index.html  # أو استبدل open بـ start حسب نظامك
 
 ## الرخصة 📜
 
-هذا المشروع مرخص تحت رخصة **MIT** - انظر ملف [LICENSE](LICENSE) للتفاصيل.
+هذا المشروع مرخص تحت رخصة **GNU General Public License v3.0** - انظر ملف [LICENSE](LICENSE) للتفاصيل.
 
 ## الاعتمادات 🙏
 

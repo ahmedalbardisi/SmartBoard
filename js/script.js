@@ -1565,61 +1565,6 @@ function drawArrow(ctx, fromX, fromY, toX, toY) {
   ctx.stroke();
 }
 
-// دالة آمنة لإضافة Event Listeners
-function safeAddEventListener(selector, event, handler) {
-  const element = document.querySelector(selector);
-  if (element) {
-    element.addEventListener(event, handler);
-  } else {
-    console.warn(`العنصر ${selector} غير موجود لإضافة Event Listener`);
-  }
-}
-
-// تهيئة جميع الأحداث بعد تحميل الصفحة
-window.addEventListener('DOMContentLoaded', function() {
-  // نظام الضغطتين المؤكد
-  safeAddEventListener('.page canvas', 'touchend', function(e) {
-    const now = Date.now();
-    const diff = now - lastTap;
-    
-    if (diff < 300 && diff > 0) {
-      e.preventDefault();
-      resetZoom();
-    }
-    lastTap = now;
-  });
-
-  // للكمبيوتر
-  safeAddEventListener('.page canvas', 'dblclick', function(e) {
-    e.preventDefault();
-    resetZoom();
-  });
-
-  // زر الطوارئ (إذا أردت إضافته)
-  safeAddEventListener('#hardResetBtn', 'click', function() {
-    resetZoom();
-    alert("تم إعادة ضبط التكبير يدويًا");
-  });
-});
-
-let lastTap = 0;
-
-// دالة إعادة الضبط المعدلة
-function resetZoom() {
-  if (!pages[currentPage]) return;
-  
-  const page = pages[currentPage];
-  page.scale = 1;
-  page.translateX = 0;
-  page.translateY = 0;
-  
-  if (page.element) {
-    page.element.style.transform = 'translate(0px, 0px) scale(1)';
-    console.log("تم تطبيق إعادة الضبط على العنصر:", page.element);
-  }
-  
-  updateZoomPercentageDisplay();
-}
 // -------------------- بدء تشغيل التطبيق --------------------
 
 window.addEventListener("load", initApp);

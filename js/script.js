@@ -1565,87 +1565,67 @@ function drawArrow(ctx, fromX, fromY, toX, toY) {
   ctx.stroke();
 }
 
-// دالة محسنة لإعادة الضبط
 function resetZoom() {
-  const currentCanvas = pages[currentPage].canvas;
-  const currentCtx = pages[currentPage].ctx;
+  const page = pages[currentPage];
+  if (!page) return;
+
+  // إعادة القيم الأساسية
+  page.scale = 1;
+  page.translateX = 0;
+  page.translateY = 0;
+
+  // تطبيق التحويلات بشكل مباشر
+  const canvas = page.canvas;
+  const container = page.element;
   
-  // إعادة إعدادات التكبير والموقع
-  pages[currentPage].scale = 1;
-  pages[currentPage].translateX = 0;
-  pages[currentPage].translateY = 0;
+  // الطريقة المضمونة لإعادة الضبط
+  container.style.transform = 'translate(0px, 0px) scale(1)';
+  container.style.transformOrigin = '0 0';
   
-  // إعادة تطبيق التحويلات
-  currentCanvas.style.transform = `translate(0, 0) scale(1)`;
-  
-  // تحديث العرض
-  updateZoomPercentageDisplay();
-  console.log("تم إعادة ضبط التكبير بنجاح");
-  
-  // إعادة رسم المحتوى إذا لزم الأمر
-  if (pages[currentPage].history.length > 0) {
+  // إعادة رسم المحتوى
+  if (page.history.length > 0) {
     const img = new Image();
     img.onload = function() {
-      currentCtx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
-      currentCtx.drawImage(img, 0, 0);
+      page.ctx.clearRect(0, 0, canvas.width, canvas.height);
+      page.ctx.drawImage(img, 0, 0);
     };
-    img.src = pages[currentPage].history[pages[currentPage].history.length-1];
+    img.src = page.history[page.history.length-1];
   }
-}
 
-// نظام الضغطتين المحسن
-let lastTapTime = 0;
-let tapCount = 0;
-
-function handleTapEvents() {
-  document.querySelectorAll('.page canvas').forEach(canvas => {
-    // للشاشات التي تعمل باللمس
-    canvas.addEventListener('touchend', function(e) {
-      e.preventDefault();
-      const currentTime = new Date().getTime();
-      const tapLength = currentTime - lastTapTime;
-      
-      if (tapLength < 300 && tapLength > 0) {
-        tapCount++;
-        if (tapCount === 2) {
-          resetZoom();
-          tapCount = 0;
-        }
-      } else {
-        tapCount = 1;
-      }
-      lastTapTime = currentTime;
-    });
-    
-    // لأجهزة الكمبيوتر
-    canvas.addEventListener('dblclick', function(e) {
-      e.preventDefault();
-      resetZoom();
-    });
+  console.log("تم إعادة الضبط - القيم الجديدة:", {
+    scale: page.scale,
+    translateX: page.translateX,
+    translateY: page.translateY
   });
 }
+// في نهاية الملف
+document.addEventListener('DOMContentLoaded', function() {
+  // نظام الضغطتين المؤكد
+  const canvas = document.querySelector('.page canvas');
+  let lastTap = 0;
 
-// تهيئة النظام عند تحميل الصفحة
-window.addEventListener('load', function() {
-  handleTapEvents();
-  
-  // إضافة زر إضافي للضبط اليدوي
-  const zoomResetBtn = document.createElement('button');
-  zoomResetBtn.id = 'manual-reset-btn';
-  zoomResetBtn.innerHTML = '<i class="fas fa-search"></i> إعادة الضبط';
-  zoomResetBtn.style.position = 'fixed';
-  zoomResetBtn.style.bottom = '20px';
-  zoomResetBtn.style.right = '20px';
-  zoomResetBtn.style.zIndex = '1000';
-  zoomResetBtn.style.padding = '10px';
-  zoomResetBtn.style.background = '#4a6fa5';
-  zoomResetBtn.style.color = 'white';
-  zoomResetBtn.style.border = 'none';
-  zoomResetBtn.style.borderRadius = '5px';
-  zoomResetBtn.style.cursor = 'pointer';
-  document.body.appendChild(zoomResetBtn);
-  
-  document.getElementById('manual-reset-btn').addEventListener('click', resetZoom);
+  canvas.addEventListener('touchend', function(e) {
+    const now = Date.now();
+    const diff = now - lastTap;
+
+    if (diff < 300 && diff > 0) {
+      e.preventDefault();
+      resetZoom();
+      
+      // إضافة تأثير مرئي لتأكيد التنفيذ
+      canvas.style.transition = 'transform 0.3s ease';
+      setTimeout(() => {
+        canvas.style.transition = '';
+      }, 300);
+    }
+    lastTap = now;
+  });
+
+  // للكمبيوتر
+  canvas.addEventListener('dblclick', function(e) {
+    e.preventDefault();
+    resetZoom();
+  });
 });
 // -------------------- بدء تشغيل التطبيق --------------------
 

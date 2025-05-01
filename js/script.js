@@ -1565,31 +1565,87 @@ function drawArrow(ctx, fromX, fromY, toX, toY) {
   ctx.stroke();
 }
 
-// دالة إعادة الضبط
+// دالة محسنة لإعادة الضبط
 function resetZoom() {
-  const page = pages[currentPage];
-  page.scale = 1;
-  page.translateX = 0;
-  page.translateY = 0;
-  applyTransform(page);
-  console.log("تم إعادة التكبير إلى الحجم الطبيعي");
+  const currentCanvas = pages[currentPage].canvas;
+  const currentCtx = pages[currentPage].ctx;
+  
+  // إعادة إعدادات التكبير والموقع
+  pages[currentPage].scale = 1;
+  pages[currentPage].translateX = 0;
+  pages[currentPage].translateY = 0;
+  
+  // إعادة تطبيق التحويلات
+  currentCanvas.style.transform = `translate(0, 0) scale(1)`;
+  
+  // تحديث العرض
+  updateZoomPercentageDisplay();
+  console.log("تم إعادة ضبط التكبير بنجاح");
+  
+  // إعادة رسم المحتوى إذا لزم الأمر
+  if (pages[currentPage].history.length > 0) {
+    const img = new Image();
+    img.onload = function() {
+      currentCtx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
+      currentCtx.drawImage(img, 0, 0);
+    };
+    img.src = pages[currentPage].history[pages[currentPage].history.length-1];
+  }
 }
 
-// للكمبيوتر (النقر المزدوج)
-document.querySelectorAll('.page canvas').forEach(canvas => {
-  canvas.addEventListener('dblclick', resetZoom);
-});
+// نظام الضغطتين المحسن
+let lastTapTime = 0;
+let tapCount = 0;
 
-// للهواتف (الضغطتان)
-let lastTap = 0;
-document.querySelectorAll('.page canvas').forEach(canvas => {
-  canvas.addEventListener('touchend', function(e) {
-    const now = new Date().getTime();
-    if (now - lastTap < 300) { // 300 مللي ثانية بين الضغطتين
+function handleTapEvents() {
+  document.querySelectorAll('.page canvas').forEach(canvas => {
+    // للشاشات التي تعمل باللمس
+    canvas.addEventListener('touchend', function(e) {
+      e.preventDefault();
+      const currentTime = new Date().getTime();
+      const tapLength = currentTime - lastTapTime;
+      
+      if (tapLength < 300 && tapLength > 0) {
+        tapCount++;
+        if (tapCount === 2) {
+          resetZoom();
+          tapCount = 0;
+        }
+      } else {
+        tapCount = 1;
+      }
+      lastTapTime = currentTime;
+    });
+    
+    // لأجهزة الكمبيوتر
+    canvas.addEventListener('dblclick', function(e) {
+      e.preventDefault();
       resetZoom();
-    }
-    lastTap = now;
+    });
   });
+}
+
+// تهيئة النظام عند تحميل الصفحة
+window.addEventListener('load', function() {
+  handleTapEvents();
+  
+  // إضافة زر إضافي للضبط اليدوي
+  const zoomResetBtn = document.createElement('button');
+  zoomResetBtn.id = 'manual-reset-btn';
+  zoomResetBtn.innerHTML = '<i class="fas fa-search"></i> إعادة الضبط';
+  zoomResetBtn.style.position = 'fixed';
+  zoomResetBtn.style.bottom = '20px';
+  zoomResetBtn.style.right = '20px';
+  zoomResetBtn.style.zIndex = '1000';
+  zoomResetBtn.style.padding = '10px';
+  zoomResetBtn.style.background = '#4a6fa5';
+  zoomResetBtn.style.color = 'white';
+  zoomResetBtn.style.border = 'none';
+  zoomResetBtn.style.borderRadius = '5px';
+  zoomResetBtn.style.cursor = 'pointer';
+  document.body.appendChild(zoomResetBtn);
+  
+  document.getElementById('manual-reset-btn').addEventListener('click', resetZoom);
 });
 // -------------------- بدء تشغيل التطبيق --------------------
 

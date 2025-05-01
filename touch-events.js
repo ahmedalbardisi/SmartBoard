@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isTemporaryPanning = false;   // Flag for temporary panning mode
     let pinchStartDistance = 0;       // For pinch-to-zoom functionality
     let initialScale = 1;             // Store initial scale for pinch zoom calculations
+    let pinchCenter = { x: 0, y: 0 }; // Center point of pinch gesture
 
     // Let's define the touch event handlers first
     const handleTouchStart = (e) => {
@@ -57,6 +58,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     touch1.clientY - touch2.clientY
                 );
                 initialScale = page.scale;
+                
+                // Store the center point of the pinch
+                const rect = canvas.getBoundingClientRect();
+                pinchCenter = {
+                    x: (touch1.clientX + touch2.clientX) / 2 - rect.left,
+                    y: (touch1.clientY + touch2.clientY) / 2 - rect.top
+                };
             }
 
             canvas.classList.add("active"); // grabbing cursor
@@ -160,13 +168,28 @@ document.addEventListener('DOMContentLoaded', () => {
                     touch1.clientY - touch2.clientY
                 );
                 
+                // Calculate center point of the pinch
+                const rect = canvas.getBoundingClientRect();
+                const pinchCenterX = (touch1.clientX + touch2.clientX) / 2 - rect.left;
+                const pinchCenterY = (touch1.clientY + touch2.clientY) / 2 - rect.top;
+                
                 // Calculate new scale based on the change in distance
                 if (pinchStartDistance > 0) {
+                    const oldScale = page.scale;
                     const scaleFactor = currentDistance / pinchStartDistance;
-                    page.scale = initialScale * scaleFactor;
+                    const newScale = initialScale * scaleFactor;
                     
                     // Limit the scale to prevent extreme zoom levels
-                    page.scale = Math.max(0.25, Math.min(page.scale, 5.0));
+                    page.scale = Math.max(0.25, Math.min(newScale, 5.0));
+                    
+                    // Adjust the translate values to zoom around the pinch center
+                    // Convert pinch center to canvas coordinates before scale change
+                    const pinchCanvasX = (pinchCenterX - page.translateX) / oldScale;
+                    const pinchCanvasY = (pinchCenterY - page.translateY) / oldScale;
+                    
+                    // Calculate the difference in position after scale change
+                    page.translateX = pinchCenterX - pinchCanvasX * page.scale;
+                    page.translateY = pinchCenterY - pinchCanvasY * page.scale;
                 }
             }
 

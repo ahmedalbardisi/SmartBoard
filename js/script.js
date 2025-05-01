@@ -1565,7 +1565,32 @@ function drawArrow(ctx, fromX, fromY, toX, toY) {
   ctx.stroke();
 }
 
+// دالة إعادة الضبط
+function resetZoom() {
+  const page = pages[currentPage];
+  page.scale = 1;
+  page.translateX = 0;
+  page.translateY = 0;
+  applyTransform(page);
+  console.log("تم إعادة التكبير إلى الحجم الطبيعي");
+}
 
+// للكمبيوتر (النقر المزدوج)
+document.querySelectorAll('.page canvas').forEach(canvas => {
+  canvas.addEventListener('dblclick', resetZoom);
+});
+
+// للهواتف (الضغطتان)
+let lastTap = 0;
+document.querySelectorAll('.page canvas').forEach(canvas => {
+  canvas.addEventListener('touchend', function(e) {
+    const now = new Date().getTime();
+    if (now - lastTap < 300) { // 300 مللي ثانية بين الضغطتين
+      resetZoom();
+    }
+    lastTap = now;
+  });
+});
 // -------------------- بدء تشغيل التطبيق --------------------
 
 window.addEventListener("load", initApp);

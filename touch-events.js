@@ -1,66 +1,41 @@
-/**
- * Smart Whiteboard - Touch Events Functionality
- * Handles touch interactions for drawing, highlighting, erasing, and panning.
- */
-
-// Ensure this script runs after the main Script.js and can access its variables and functions.
-// Variables like pages, currentPage, currentTool, currentColor, currentSize,
-// isDrawing, isPanning, panStartX, panStartY, drawStartX, drawStartY,
-// savedCanvasState, highlightPoints, penPoints are assumed to be globally available from Script.js.
-// Functions like getMousePos, saveToHistory, updateUndoRedoButtons, applyTransform,
-// drawArrow, drawTable are also assumed to be globally available.
-
 document.addEventListener('DOMContentLoaded', () => {
-    // Define touch event handlers
-
     const handleTouchStart = (e) => {
-        // Prevent default to avoid scrolling and zooming while drawing/panning
-        e.preventDefault();
+        e.preventDefault(); // Prevent default behavior (scroll, zoom)
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
         const page = pages[pageIndex];
 
         if (!page || !page.ctx) {
-            console.error(`Page object or context not found for touchstart on canvas.`);
+            console.error(`Page object or context not found.`);
             return;
         }
 
-        // Handle multi-touch for panning (optional, current pan is single-touch mouse based)
+        // إذا كانت الأداة هي "التنقل" وتعدد اللمسات أكبر من 1
         if (e.touches.length > 1 && currentTool === 'pan') {
-            // Simple multi-touch pan: Use the first touch point for pan start
             isPanning = true;
             const touch = e.touches[0];
             const rect = canvas.getBoundingClientRect();
             panStartX = touch.clientX - rect.left - page.translateX;
             panStartY = touch.clientY - rect.top - page.translateY;
-
-            canvas.classList.add("active"); // grabbing cursor
-            return; // Don't draw when panning
+            canvas.classList.add("active"); // تغيير المؤشر أثناء السحب
+            return; // لا نريد الرسم عند التنقل
         }
 
-        // Handle single touch for drawing/shaping tools
+        // إذا كانت اللمسة واحدة و الأداة ليست "تنقل"
         if (e.touches.length === 1 && currentTool !== 'pan') {
             isDrawing = true;
             const touch = e.touches[0];
-            const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY); // Use the adapted getMousePos
+            const pos = getMousePos(canvas, touch, page.scale, page.translateX, page.translateY);
 
             [lastX, lastY] = [pos.x, pos.y];
             drawStartX = pos.x;
             drawStartY = pos.y;
 
-            // Save the canvas state before starting any drawing action
+            // حفظ حالة اللوحة قبل بدء الرسم
             savedCanvasState = page.ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-            // Add logic for 'table' tool touch start
-            if (currentTool === 'table') {
-                const rows = parseInt(document.getElementById('table-rows').value);
-                const cols = parseInt(document.getElementById('table-cols').value);
-                page.tableInfo = { startX: drawStartX, startY: drawStartY, rows: rows, cols: cols };
-                console.log(`Drawing table with ${rows} rows and ${cols} columns on touchstart`);
-            }
-
-            // Prepare context for drawing (pen, eraser, highlight)
+            // إعداد الأدوات مثل القلم، الممحاة، التحديد
             if (currentTool === 'pen' || currentTool === 'eraser' || currentTool === 'highlight') {
                 page.ctx.beginPath();
 
@@ -94,30 +69,30 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const handleTouchMove = (e) => {
-        e.preventDefault(); // Prevent scrolling
+        e.preventDefault();
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
         const page = pages[pageIndex];
 
         if (!page || !page.ctx || !page.canvas) {
-            console.error(`Page object, context, or canvas not found for touchmove on canvas.`);
+            console.error(`Page object or context not found.`);
             return;
         }
 
         const ctx = page.ctx;
 
+        // إذا كانت أداة "التنقل" مفعلة
         if (isPanning && e.touches.length > 0) {
             const touch = e.touches[0];
             const rect = canvas.getBoundingClientRect();
-            // Calculate new translate values based on touch movement relative to pan start
             page.translateX = (touch.clientX - rect.left) - panStartX;
             page.translateY = (touch.clientY - rect.top) - panStartY;
-
-            applyTransform(page); // Update visual position
+            applyTransform(page); // تطبيق التغيير في الموضع
             return;
         }
 
+        // إذا كانت أداة الرسم مفعلة
         if (!isDrawing || e.touches.length === 0) return;
 
         const touch = e.touches[0];
@@ -159,56 +134,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.stroke();
             }
         } else if (currentTool === 'eraser') {
-            const ctx = page.ctx;
             ctx.lineTo(pos.x, pos.y);
             ctx.stroke();
             [lastX, lastY] = [pos.x, pos.y];
-        } else if (currentTool === 'rect' || currentTool === 'circle' || currentTool === 'line' || currentTool === 'arrow' || currentTool === 'table') {
-            if (savedCanvasState) {
-                ctx.putImageData(savedCanvasState, 0, 0);
-            }
-
-            ctx.strokeStyle = currentColor;
-            ctx.lineWidth = currentSize;
-            ctx.globalAlpha = 1.0;
-            ctx.globalCompositeOperation = 'source-over';
-
-            const width = pos.x - drawStartX;
-            const height = pos.y - drawStartY;
-
-            ctx.beginPath();
-            if (currentTool === 'rect') {
-                ctx.strokeRect(drawStartX, drawStartY, width, height);
-            } else if (currentTool === 'circle') {
-                const centerX = drawStartX + width / 2;
-                const centerY = drawStartY + height / 2;
-                const radiusX = Math.abs(width / 2);
-                const radiusY = Math.abs(height / 2);
-                ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
-                ctx.stroke();
-            } else if (currentTool === 'line') {
-                ctx.moveTo(drawStartX, drawStartY);
-                ctx.lineTo(pos.x, pos.y);
-                ctx.stroke();
-            } else if (currentTool === 'arrow') {
-                drawArrow(ctx, drawStartX, drawStartY, pos.x, pos.y);
-            } else if (currentTool === 'table' && page.tableInfo) {
-                // Draw table preview
-                drawTable(ctx, page.tableInfo.startX, page.tableInfo.startY, width, height, page.tableInfo.rows, page.tableInfo.cols);
-            }
-            ctx.closePath();
         }
     };
 
     const handleTouchEnd = (e) => {
-        e.preventDefault(); // Prevent default behavior
+        e.preventDefault();
 
         const canvas = e.target;
         const pageIndex = pages.findIndex(p => p.canvas === canvas);
         const page = pages[pageIndex];
 
         if (!page || !page.ctx || !page.canvas) {
-            console.error(`Page object, context, or canvas not found for touchend on canvas.`);
+            console.error(`Page object, context, or canvas not found.`);
             savedCanvasState = null;
             isDrawing = false;
             isPanning = false;
@@ -218,7 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (e.touches.length === 0) {
             if (currentTool === 'highlight') {
-                saveToHistory(); // Store state for undo
+                saveToHistory(); // حفظ في التاريخ (undo)
                 updateUndoRedoButtons();
             }
             savedCanvasState = null;
@@ -228,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Add touch event listeners to all canvases
+    // إضافة مستمعين للأحداث لجميع الألواح
     const canvases = document.querySelectorAll('.canvas-container canvas');
     canvases.forEach(canvas => {
         canvas.addEventListener('touchstart', handleTouchStart);

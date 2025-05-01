@@ -366,26 +366,5 @@
     </div>
     <script src="js/script.js"></script>
     <script src="js/touch-events.js"></script>
-    <script>
-// زر طارئ لإعادة الضبط
-const emergencyReset = document.createElement('div');
-emergencyReset.innerHTML = `
-  <button onclick="resetZoom()" 
-          style="position:fixed; bottom:20px; left:20px; z-index:1000;
-                 padding:10px; background:red; color:white; border:none;
-                 border-radius:5px; cursor:pointer;">
-    <i class="fas fa-undo"></i> إعادة ضبط الطوارئ
-  </button>
-`;
-document.body.appendChild(emergencyReset);
-
-function resetZoom() {
-  const canvases = document.querySelectorAll('.page canvas');
-  canvases.forEach(canvas => {
-    canvas.style.transform = 'scale(1) translate(0, 0)';
-  });
-  console.log("تم تنفيذ إعادة الضبط الطارئ");
-}
-</script>
   </body>
 </html>

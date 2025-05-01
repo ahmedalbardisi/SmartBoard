@@ -72,14 +72,7 @@ open index.html  # أو استبدل open بـ start حسب نظامك
 
 ## المساهمة في المشروع 🤝
 
-نرحب بمساهماتك! يرجى اتباع الخطوات التالية:
-
-1. قم بعمل Fork للمشروع
-2. إنشاء فرع جديد (`git checkout -b feature/AmazingFeature`)
-3. إجراء التعديلات المطلوبة
-4. عمل Commit للتغييرات (`git commit -m 'Add some AmazingFeature'`)
-4. Push إلى الفرع (`git push origin feature/AmazingFeature`)
-5. فتح طلب دمج (Pull Request)
+نرحب بمساهماتك! 
 
 ## الرخصة 📜
 

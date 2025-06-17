@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="السبورة الذكية لتسجيل الملاحظات والرسم" />
+
+    <title>السبورة الذكية | Smart Whiteboard</title>
+
+    <link rel="icon" href="./img/whiteboard.png" type="image/x-png" />
+
+    <meta name="robots" content="index, follow" />
+
+    <link
+      rel="canonical"
+      href="https://ahmedalbardisi.github.io/SmartBoard/index.html"
+    />
+
+    <meta property="og:title" content="السبورة الذكية | Smart Whiteboard" />
+    <meta
+      property="og:description"
+      content="تطبيق السبورة الذكية لتسجيل الملاحظات والرسم بسهولة."
+    />
+    <meta
+      property="og:image"
+      content="https://ahmedalbardisi.github.io/SmartBoard/img/Screen.jpeg"
+    />
+    <meta
+      property="og:url"
+      content="https://ahmedalbardisi.github.io/SmartBoard/index.html"
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="السبورة الذكية | Smart Whiteboard" />
+    <meta
+      name="twitter:description"
+      content="تطبيق السبورة الذكية لتسجيل الملاحظات والرسم بسهولة."
+    />
+    <meta
+      name="twitter:image"
+      content="https://ahmedalbardisi.github.io/SmartBoard/img/Screen.jpeg"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="css/style.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Tajawal:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  </head>
+
+  <body>
+    <!-- Header أعلى الصفحة -->
+    <header class="header">
+      <div class="hdr-left">
+        <button id="toggle-sidebar" title="إظهار/إخفاء الشريط الجانبي">
+          <i class="fas fa-bars"></i>
+        </button>
+        <label for="file-name">اسم المشروع:</label>
+        <input type="text" id="file-name" value="ملف جديد" />
+      </div>
+      <div class="hdr-center">
+        <button id="zoom-out" title="تصغير">
+          <i class="fas fa-search-minus"></i>
+        </button>
+        <div class="pages_all_span">
+          <span id="page-indicator">1 / 1 </span>
+          <span id="zoom-percentage">100%</span>
+        </div>
+        <button id="zoom-in" title="تكبير">
+          <i class="fas fa-search-plus"></i>
+        </button>
+      </div>
+      <div class="hdr-right">
+        <button id="dark-mode-btn" title="الوضع الليلي">
+          <i class="fas fa-moon"></i>
+        </button>
+        <button id="settings-btn" title="الإعدادات">
+          <i class="fas fa-cog"></i>
+        </button>
+        <button id="undo-btn" title="تراجع"><i class="fas fa-undo"></i></button>
+        <button id="redo-btn" title="تقدم"><i class="fas fa-redo"></i></button>
+        <button id="clear-btn" title="حذف الكل">
+          <i class="fas fa-trash"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- شريط الأدوات الأفقي الجديد -->
+    <div class="horizontal-toolbar">
+      <div class="toolbar-section drawing-tools">
+        <div class="section-title">
+          <h4>أدوات الرسم</h4>
+          <button class="toggle-section" data-target="drawing-tools-content">
+            <i class="fas fa-chevron-down"></i>
+          </button>
+        </div>
+        <div class="section-content" id="drawing-tools-content">
+          <button id="pen-btn" class="tool-btn active" title="قلم">
+            <i class="fas fa-pen"></i>
+          </button>
+          <button id="highlight-btn" class="tool-btn" title="تظليل">
+            <i class="fas fa-highlighter"></i>
+          </button>
+          <button id="eraser-btn" class="tool-btn" title="ممحاة">
+            <i class="fas fa-eraser"></i>
+          </button>
+          <button id="pan-btn" class="tool-btn" title="تنقل">
+            <i class="fas fa-hand-paper"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="toolbar-section color-tools">
+        <div class="section-title">
+          <h4>ألوان</h4>
+          <button class="toggle-section" data-target="color-tools-content">
+            <i class="fas fa-chevron-down"></i>
+          </button>
+        </div>
+        <div class="section-content" id="color-tools-content">
+          <div class="color-list">
+            <div
+              class="color-circle selected"
+              data-color="#000000"
+              style="background: #000000"
+            ></div>
+            <div
+              class="color-circle"
+              data-color="#666666"
+              style="background: #666666"
+            ></div>
+            <div
+              class="color-circle"
+              data-color="#87CEEB"
+              style="background: #87ceeb"
+            ></div>
+            <div
+              class="color-circle"
+              data-color="#2E8B57"
+              style="background: #2e8b57"
+            ></div>
+            <div
+              class="color-circle"
+              data-color="#FFD700"
+              style="background: #ffd700"
+            ></div>
+            <div
+              class="color-circle"
+              data-color="#E74C3C"
+              style="background: #e74c3c"
+            ></div>
+            <div
+              class="color-circle"
+              data-color="#9B59B6"
+              style="background: #9b59b6"
+            ></div>
+            <div
+              class="color-circle"
+              data-color="#FFFFFF"
+              style="background: #ffffff; border: 1px solid #ccc"
+            ></div>
+            <div
+              class="color-circle custom-color-btn"
+              title="لون مخصص"
+              style="
+                background: linear-gradient(135deg, red, blue, green);
+                position: relative;
+              "
+            >
+              <i
+                class="fas fa-plus"
+                style="position: absolute; color: white; font-size: 12px"
+              ></i>
+            </div>
+          </div>
+          <input
+            type="color"
+            id="color-picker"
+            class="hidden"
+            value="#000000"
+          />
+        </div>
+      </div>
+
+      <div class="toolbar-section size-tools">
+        <div class="section-title">
+          <h4>أحجام القلم</h4>
+          <button class="toggle-section" data-target="size-tools-content">
+            <i class="fas fa-chevron-down"></i>
+          </button>
+        </div>
+        <div class="section-content" id="size-tools-content">
+          <div class="size-list">
+            <div class="size-dot selected" data-size="2"></div>
+            <div class="size-dot" data-size="5"></div>
+            <div class="size-dot" data-size="10"></div>
+            <div class="size-dot" data-size="15"></div>
+          </div>
+          <div class="size-slider">
+            <input
+              type="range"
+              id="pen-size-slider"
+              min="1"
+              max="30"
+              value="2"
+            />
+            <span id="size-value">2px</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- لوحة الإعدادات المنبثقة -->
+    <div id="settings-panel" class="settings-panel hidden">
+      <h3>الإعدادات</h3>
+      <button id="save-pdf"><i class="fas fa-file-pdf"></i> حفظ كـ PDF</button>
+      <hr />
+      <label>خلفية الصفحة:</label>
+      <select id="bg-type">
+        <option value="dots">نقاط</option>
+        <option value="lines">خطوط</option>
+        <option value="grid">شبكة</option>
+        <option value="plain">فارغة</option>
+      </select>
+      <hr />
+      <label>إعدادات الألوان المخصصة:</label>
+      <div class="custom-colors-container">
+        <div class="custom-colors-grid">
+          <div class="custom-color" style="background-color: #f44336"></div>
+          <div class="custom-color" style="background-color: #e91e63"></div>
+          <div class="custom-color" style="background-color: #9c27b0"></div>
+          <div class="custom-color" style="background-color: #673ab7"></div>
+          <div class="custom-color" style="background-color: #3f51b5"></div>
+          <div class="custom-color" style="background-color: #2196f3"></div>
+          <div class="custom-color" style="background-color: #03a9f4"></div>
+          <div class="custom-color" style="background-color: #00bcd4"></div>
+          <div class="custom-color" style="background-color: #009688"></div>
+          <div class="custom-color" style="background-color: #4caf50"></div>
+          <div class="custom-color" style="background-color: #8bc34a"></div>
+          <div class="custom-color" style="background-color: #cddc39"></div>
+          <div class="custom-color" style="background-color: #ffeb3b"></div>
+          <div class="custom-color" style="background-color: #ffc107"></div>
+          <div class="custom-color" style="background-color: #ff9800"></div>
+          <div class="custom-color" style="background-color: #ff5722"></div>
+          <div class="custom-color" style="background-color: #795548"></div>
+          <div class="custom-color" style="background-color: #9e9e9e"></div>
+          <div class="custom-color" style="background-color: #607d8b"></div>
+          <div class="custom-color add-custom-color">
+            <i class="fas fa-plus"></i>
+          </div>
+        </div>
+        <div class="color-mixing">
+          <label>مزج الألوان:</label>
+          <div class="color-sliders">
+            <div class="slider-group">
+              <span>R</span>
+              <input type="range" id="red-slider" min="0" max="255" value="0" />
+              <span id="red-value">0</span>
+            </div>
+            <div class="slider-group">
+              <span>G</span>
+              <input
+                type="range"
+                id="green-slider"
+                min="0"
+                max="255"
+                value="0"
+              />
+              <span id="green-value">0</span>
+            </div>
+            <div class="slider-group">
+              <span>B</span>
+              <input
+                type="range"
+                id="blue-slider"
+                min="0"
+                max="255"
+                value="0"
+              />
+              <span id="blue-value">0</span>
+            </div>
+          </div>
+          <div class="color-preview">
+            <div id="color-preview-box"></div>
+            <input type="text" id="color-hex" value="#000000" />
+          </div>
+          <button id="add-mixed-color">إضافة اللون</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- منطقة العمل -->
+    <div class="workspace">
+      <!-- Sidebar بالأشكال والجداول -->
+      <aside class="sidebar">
+        <div class="sidebar-section shapes-section">
+          <div class="section-header">
+            <h4>الأشكال</h4>
+            <button class="toggle-sidebar-section" data-target="shapes-content">
+              <i class="fas fa-chevron-down"></i>
+            </button>
+          </div>
+          <div class="section-content" id="shapes-content">
+            <button id="rect-btn" class="tool-btn" title="مستطيل">
+              <i class="far fa-square"></i>
+            </button>
+            <button id="circle-btn" class="tool-btn" title="دائرة">
+              <i class="far fa-circle"></i>
+            </button>
+            <button id="line-btn" class="tool-btn" title="خط">
+              <i class="fas fa-minus"></i>
+            </button>
+            <button id="arrow-btn" class="tool-btn" title="سهم">
+              <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="sidebar-section tables-section">
+          <div class="section-header">
+            <h4>الجداول</h4>
+            <button class="toggle-sidebar-section" data-target="tables-content">
+              <i class="fas fa-chevron-up"></i>
+            </button>
+          </div>
+          <div class="section-content hidden" id="tables-content">
+            <button id="table-btn" class="tool-btn" title="إضافة جدول">
+              <i class="fas fa-table"></i>
+            </button>
+            <div id="table-options" class="hidden">
+              <label>عدد الصفوف:</label>
+              <input type="number" id="table-rows" min="1" max="10" value="3" />
+              <label>عدد الأعمدة:</label>
+              <input type="number" id="table-cols" min="1" max="10" value="3" />
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-section pages-section">
+          <div class="section-header">
+            <h4>الصفحات</h4>
+            <button class="toggle-sidebar-section" data-target="pages-content">
+              <i class="fas fa-chevron-down"></i>
+            </button>
+          </div>
+          <div class="section-content" id="pages-content">
+            <div class="pages-list">
+              <!-- <div class="page-item active">صفحة 1</div> -->
+              <button id="add-page-btn" class="add-page-button">
+                <i class="fas fa-plus"></i> صفحة جديدة
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- منطقة الصفحات -->
+      <main class="canvas-area" id="pages-container">
+        <div class="cont_pags"></div>
+      </main>
+    </div>
+    <script src="js/script.js"></script>
+    <script src="js/touch-events.js"></script>
+  </body>
+</html>

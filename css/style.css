@@ -470,7 +470,7 @@
     background: #fff;
     padding: 10px;
     box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
-    overflow-y: auto;
+    overflow-y: overlay;
     transition: all 0.3s;
     scrollbar-width: thin;
   }

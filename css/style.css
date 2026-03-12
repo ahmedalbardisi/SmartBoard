@@ -673,11 +673,11 @@
   .cont_pags {
     display: flex;
     flex-direction: column;
-    align-items: center;         /* توسيط الورقة أفقياً */
+    align-items: flex-start;     /* top-left origin يستلزم محاذاة يسرى */
     gap: 30px;
+    padding: 30px;
     padding-bottom: 50px;
-    min-width: max-content;      /* ← يضمن أن الحاوية تتسع للورقة المُكبَّرة */
-    margin: 0 auto;              /* ← توسيط حين تكون الورقة أصغر من الشاشة */
+    min-width: max-content;
   }
   
   /* === الصفحات === */

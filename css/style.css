@@ -673,11 +673,9 @@
   .cont_pags {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;     /* top-left origin يستلزم محاذاة يسرى */
+    align-items: flex-start;
     gap: 30px;
-    padding: 30px;
-    padding-bottom: 50px;
-    min-width: max-content;
+    padding: 30px 60px 50px 60px;
   }
   
   /* === الصفحات === */

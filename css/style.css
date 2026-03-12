@@ -662,21 +662,22 @@
     flex: 1;
     overflow: auto;
     position: relative;
-    display: flex;
-    justify-content: center;
+    display: block;              /* ← تغيير من flex إلى block */
     padding: 30px;
     background: #e2e2e2;
-    transition: all 0.3s;
-    overscroll-behavior: none;   /* منع pull-to-refresh من الحاوية */
-    touch-action: pan-x pan-y;   /* السماح بالتمرير الطبيعي داخل الحاوية */
+    transition: background 0.3s;
+    overscroll-behavior: none;
+    touch-action: pan-x pan-y;
   }
-  
+
   .cont_pags {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: center;         /* توسيط الورقة أفقياً */
     gap: 30px;
     padding-bottom: 50px;
+    min-width: max-content;      /* ← يضمن أن الحاوية تتسع للورقة المُكبَّرة */
+    margin: 0 auto;              /* ← توسيط حين تكون الورقة أصغر من الشاشة */
   }
   
   /* === الصفحات === */

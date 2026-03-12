@@ -21,7 +21,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 20px;
+    padding: 5px 20px;
     background: #fff;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
     position: relative;
@@ -33,25 +33,27 @@
   .hdr-center,
   .hdr-right {
     display: flex;
-    align-items: center;
     gap: 15px;
+    align-items: center;
   }
   
   #file-name {
-    padding: 8px 12px;
+    padding: 1px 1px;
     font-size: 16px;
-    border: 1px solid #ccc;
+    border: none;
+    font-family: 'Cairo';
     border-radius: 4px;
-/*  min-width: 200px;*/
+    color: #333333;
+    /*  min-width: 200px;*/
     max-width: 150px;
-      } 
+    } 
   
   .header button {
     background: none;
     border: none;
     font-size: 18px;
     cursor: pointer;
-    padding: 8px 12px;
+    padding: 5px 5px;
     color: #555;
     transition: all 0.2s;
   }
@@ -108,7 +110,7 @@
   
   .section-title h4 {
     margin: 5px 0;
-    font-size: 14px;
+    font-size: 10px;
     color: #555;
   }
   
@@ -1416,8 +1418,8 @@ button.page-action-btn.delete-page-btn:hover {
   margin-bottom: 8px;
 }
 .pages_all_span {
-  display: grid
-;
+  /* display: grid
+; */
   justify-items: center;
 }
 

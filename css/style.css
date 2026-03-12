@@ -288,7 +288,7 @@
   .settings-panel {
     position: absolute;
     top: 60px;
-    right: 20px;
+    left: 20px;
     width: 320px;
     background: #fff;
     padding: 15px;
@@ -1472,3 +1472,4 @@ body.dark-mode .canvas-area.drag-over::after {
     background: rgba(96, 165, 250, 0.9);
     color: #1e293b;
 }
+

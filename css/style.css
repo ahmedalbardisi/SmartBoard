@@ -466,10 +466,10 @@
   
   /* === الشريط الجانبي === */
   .sidebar {
-    width: 220px;
+    width: 230px;
     background: #fff;
     padding: 10px;
-    padding-bottom: 10;
+    padding-bottom: 20px;
     box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
     overflow-y: overlay;
     transition: all 0.3s;

@@ -132,7 +132,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 5px;
+    margin-top: 0px;
     transition: all 0.3s;
   }
   
@@ -146,9 +146,9 @@
   }
   
   .drawing-tools .tool-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 15px;
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
   }
   
   /* === الألوان في الشريط الأفقي === */
@@ -165,8 +165,8 @@
   }
   
   .color-circle {
-    width: 28px;
-    height: 28px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     border: 2px solid #fff;
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
@@ -469,6 +469,7 @@
     width: 220px;
     background: #fff;
     padding: 10px;
+    padding-bottom: 10;
     box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
     overflow-y: overlay;
     transition: all 0.3s;
@@ -658,6 +659,7 @@
   html, body {
     overscroll-behavior: none;
     touch-action: pan-x pan-y;   /* نسمح بالسحب الاعتيادي فقط للمتصفح */
+    height: 100%;
   }
 
   .canvas-area {
@@ -729,8 +731,8 @@
   
   /* === تفاعلات ادوات الرسم === */
   .tool-btn {
-    width: 40px;
-    height: 40px;
+    width: 30px;
+    height: 30px;
     border-radius: 8px;
     background: #fff;
     display: flex;
@@ -739,7 +741,7 @@
     border: 1px solid #ddd;
     cursor: pointer;
     transition: all 0.2s;
-    font-size: 16px;
+    font-size: 12px;
     color: #555;
   }
   

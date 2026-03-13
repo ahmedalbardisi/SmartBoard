@@ -137,7 +137,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 5px;
+    margin-top: 0px;
     transition: all 0.3s;
   }
   
@@ -151,9 +151,9 @@
   }
   
   .drawing-tools .tool-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 15px;
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
   }
   
   /* === الألوان في الشريط الأفقي === */
@@ -170,8 +170,8 @@
   }
   
   .color-circle {
-    width: 28px;
-    height: 28px;
+    width: 25px;
+    height: 25px;
     border-radius: 50%;
     border: 2px solid #fff;
     box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
@@ -293,7 +293,7 @@
   .settings-panel {
     position: absolute;
     top: 60px;
-    right: 20px;
+    left: 20px;
     width: 320px;
     background: #fff;
     padding: 15px;
@@ -473,7 +473,7 @@
   
   /* === الشريط الجانبي === */
   .sidebar {
-    width: 220px;
+    width: 225px;
     background: #fff;
     padding: 10px;
     box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
@@ -746,8 +746,8 @@
   
   /* === تفاعلات ادوات الرسم === */
   .tool-btn {
-    width: 40px;
-    height: 40px;
+    width: 30px;
+    height: 30px;
     border-radius: 8px;
     background: #fff;
     display: flex;
